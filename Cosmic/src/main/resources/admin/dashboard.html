@@ -104,6 +104,28 @@
     .rec-group { border-bottom:1px solid #2a200f; }
     .rec-group:last-child { border-bottom:0; }
     .rec-slot { background:#3a2f1a; color:var(--accent); padding:6px 12px; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
+    .char-workspace { display:grid; grid-template-columns: 320px 1fr; gap:14px; }
+    @media (max-width: 1100px) { .char-workspace { grid-template-columns: 1fr; } }
+    .sidebar { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; align-self:start; position:sticky; top:14px; }
+    .sidebar h3 { margin:0 0 6px; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); font-weight:600; }
+    .sidebar .picker { width:100%; margin-bottom:14px; }
+    .sidebar .char-name { font-size:22px; font-weight:600; color:var(--ink); line-height:1.1; }
+    .sidebar .char-job { color:var(--accent); font-size:13px; margin-top:4px; }
+    .sidebar .char-meta { color:var(--muted); font-size:12px; margin-top:8px; line-height:1.5; }
+    .sidebar .sb-stats { display:grid; grid-template-columns: 1fr 1fr; gap:5px 12px; margin-top:10px; font-size:12.5px; }
+    .sidebar .sb-stats .k { color:var(--muted); }
+    .sidebar .sb-stats .v { color:var(--ink); font-weight:600; text-align:right; }
+    .sidebar .sb-section { border-top:1px solid var(--line); padding-top:12px; margin-top:14px; }
+    .sidebar .sb-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+    .sidebar .sb-actions button { padding:5px 10px; font-size:12.5px; flex:1 1 auto; min-width:0; }
+    .sidebar .sb-give { display:grid; grid-template-columns: 1fr auto; gap:6px; margin-top:8px; font-size:12px; }
+    .sidebar .sb-give input { font-size:12px; padding:5px 8px; }
+    .sidebar .sb-give button { font-size:12px; padding:5px 10px; }
+    .sidebar .sb-empty { color:var(--muted); font-size:13px; padding:24px 0; text-align:center; }
+    nav.subtabs { display:flex; gap:2px; margin-bottom:12px; border-bottom:1px solid var(--line); padding-bottom:0; }
+    nav.subtabs button { background:transparent; color:var(--muted); border:0; border-bottom:2px solid transparent; padding:8px 14px; font:inherit; cursor:pointer; }
+    nav.subtabs button:hover { color:var(--ink); }
+    nav.subtabs button.active { color:var(--ink); border-bottom-color:var(--accent); }
   </style>
 </head>
 <body>
@@ -118,100 +140,139 @@
   </header>
 
   <nav class="tabs">
-    <button data-tab="players" class="active">Players</button>
+    <button data-tab="character" class="active">Character</button>
     <button data-tab="accounts">Accounts</button>
-    <button data-tab="items">Items</button>
     <button data-tab="world">World</button>
     <button data-tab="server">Server</button>
     <button data-tab="logs">Logs</button>
   </nav>
 
   <main>
-    <!-- PLAYERS TAB -->
-    <section data-panel="players" class="cols">
-      <div>
-        <div class="panel">
-          <h2>Online players <span class="sub" id="playerCount"></span></h2>
-          <table>
-            <thead><tr><th>Name</th><th>Acct</th><th>Job</th><th>Lv</th><th>Map</th><th>Mesos</th><th>NX</th><th>God</th></tr></thead>
-            <tbody id="players"><tr><td colspan="8" class="empty">No players online</td></tr></tbody>
-          </table>
-        </div>
-      </div>
+    <!-- CHARACTER TAB -->
+    <section data-panel="character" class="char-workspace">
+      <!-- SIDEBAR -->
+      <aside class="sidebar">
+        <h3>Hooked character <span style="color:var(--muted); font-weight:400; text-transform:none; letter-spacing:0;" id="playerCount"></span></h3>
+        <select id="charPicker" class="picker" onchange="onCharPick()">
+          <option value="">— pick an online character —</option>
+        </select>
 
-      <div>
-        <div class="panel">
-          <h2>Quick actions <span class="sub">requires selected player</span></h2>
-          <div class="row">
-            <button class="primary" onclick="act('godmode',{enabled:true})">Godmode On</button>
-            <button onclick="act('godmode',{enabled:false})">Godmode Off</button>
+        <div id="sbInfo" class="hidden">
+          <div class="char-name" id="sbName"></div>
+          <div class="char-job" id="sbJob"></div>
+          <div class="char-meta" id="sbMeta"></div>
+
+          <h3 class="sb-section">Stats</h3>
+          <div class="sb-stats" id="sbStats"></div>
+
+          <h3 class="sb-section">Quick actions</h3>
+          <div class="sb-actions">
             <button onclick="act('heal')">Heal</button>
+            <button onclick="act('godmode',{enabled:true})">God ON</button>
+            <button onclick="act('godmode',{enabled:false})">God OFF</button>
             <button onclick="act('mobvac')">Mob Vac</button>
             <button onclick="act('tubi')">Tubi</button>
-            <button class="danger" onclick="if(confirm('Kick '+selected+'?')) act('kick')" style="margin-left:auto;">Kick</button>
+            <button class="danger" onclick="if(confirm('Kick '+selected+'?')) act('kick')">Kick</button>
           </div>
-        </div>
 
-        <div class="panel">
-          <h2>Give</h2>
-          <div class="grid two">
+          <h3 class="sb-section">Give mesos / NX</h3>
+          <div class="sb-give">
             <input id="mesos" type="number" value="1000000">
             <button onclick="act('mesos',{amount:num('mesos')})">Mesos</button>
             <input id="nx" type="number" value="10000">
             <button onclick="act('nx',{amount:num('nx')})">NX</button>
-            <input id="itemId" type="number" placeholder="Item ID" value="2000005">
-            <input id="quantity" type="number" placeholder="Qty" value="10">
-          </div>
-          <div style="margin-top:8px;">
-            <button class="primary" onclick="act('item',{itemId:num('itemId'),quantity:num('quantity')})">Give Item</button>
           </div>
         </div>
 
-        <div class="panel">
-          <h2>Character stats <span class="sub" id="statsHint">select a player</span></h2>
-          <div class="grid stats-grid">
-            <label class="field">Level<div class="row compact"><input id="setLevel" type="number"><button onclick="cmd('level', num('setLevel'))">Set</button></div></label>
-            <label class="field">Job ID<div class="row compact"><input id="setJob" type="number" list="jobList"><button onclick="cmd('job', num('setJob'))">Set</button></div></label>
-            <label class="field">STR<div class="row compact"><input id="setStr" type="number"><button onclick="setAttr('str','setStr')">Set</button></div></label>
-            <label class="field">DEX<div class="row compact"><input id="setDex" type="number"><button onclick="setAttr('dex','setDex')">Set</button></div></label>
-            <label class="field">INT<div class="row compact"><input id="setInt" type="number"><button onclick="setAttr('int','setInt')">Set</button></div></label>
-            <label class="field">LUK<div class="row compact"><input id="setLuk" type="number"><button onclick="setAttr('luk','setLuk')">Set</button></div></label>
-            <label class="field">Max HP<div class="row compact"><input id="setMaxHp" type="number"><button onclick="setAttr('maxhp','setMaxHp')">Set</button></div></label>
-            <label class="field">Max MP<div class="row compact"><input id="setMaxMp" type="number"><button onclick="setAttr('maxmp','setMaxMp')">Set</button></div></label>
-            <label class="field">AP available<div class="row compact"><input id="setAp" type="number"><button onclick="setAttr('ap','setAp')">Set</button></div></label>
-            <label class="field">SP available <span class="sub">current job book</span><div class="row compact"><input id="setSp" type="number"><button onclick="setAttr('sp','setSp')">Set</button></div></label>
-            <label class="field">Fame<div class="row compact"><input id="setFame" type="number"><button onclick="setAttr('fame','setFame')">Set</button></div></label>
+        <div id="sbEmpty" class="sb-empty">
+          No character selected. Pick one above to start tweaking.
+        </div>
+      </aside>
+
+      <!-- MAIN WORKSPACE -->
+      <div>
+        <nav class="subtabs">
+          <button data-subtab="stats" class="active">Stats &amp; commands</button>
+          <button data-subtab="items">Items</button>
+        </nav>
+
+        <!-- STATS & COMMANDS SUBTAB -->
+        <div data-subpanel="stats">
+          <div class="panel">
+            <h2>Character stats <span class="sub" id="statsHint">select a character</span></h2>
+            <div class="grid stats-grid">
+              <label class="field">Level<div class="row compact"><input id="setLevel" type="number"><button onclick="cmd('level', num('setLevel'))">Set</button></div></label>
+              <label class="field">Job ID<div class="row compact"><input id="setJob" type="number" list="jobList"><button onclick="cmd('job', num('setJob'))">Set</button></div></label>
+              <label class="field">STR<div class="row compact"><input id="setStr" type="number"><button onclick="setAttr('str','setStr')">Set</button></div></label>
+              <label class="field">DEX<div class="row compact"><input id="setDex" type="number"><button onclick="setAttr('dex','setDex')">Set</button></div></label>
+              <label class="field">INT<div class="row compact"><input id="setInt" type="number"><button onclick="setAttr('int','setInt')">Set</button></div></label>
+              <label class="field">LUK<div class="row compact"><input id="setLuk" type="number"><button onclick="setAttr('luk','setLuk')">Set</button></div></label>
+              <label class="field">Max HP<div class="row compact"><input id="setMaxHp" type="number"><button onclick="setAttr('maxhp','setMaxHp')">Set</button></div></label>
+              <label class="field">Max MP<div class="row compact"><input id="setMaxMp" type="number"><button onclick="setAttr('maxmp','setMaxMp')">Set</button></div></label>
+              <label class="field">AP available<div class="row compact"><input id="setAp" type="number"><button onclick="setAttr('ap','setAp')">Set</button></div></label>
+              <label class="field">SP available <span class="sub">current job book</span><div class="row compact"><input id="setSp" type="number"><button onclick="setAttr('sp','setSp')">Set</button></div></label>
+              <label class="field">Fame<div class="row compact"><input id="setFame" type="number"><button onclick="setAttr('fame','setFame')">Set</button></div></label>
+            </div>
+            <div class="row" style="margin-top:10px;">
+              <button class="primary" onclick="if(confirm('Naturalize '+selected+'?\\n\\n• STR/DEX/INT/LUK → 4\\n• Remaining AP → 5L+4\\n• HP/MP → job natural curve\\n• Remaining SP → 3 × (level−9), 0 for Beginner\\n• ALL learned skills wiped (DB row deleted)\\n\\nThis cannot be undone.')) cmd('naturalize')">Naturalize</button>
+              <button onclick="if(confirm('Max EVERYTHING on '+selected+'?')) cmd('maxstat')">Max everything</button>
+              <span class="sub" style="color:var(--muted); font-size:12px;"><b>Naturalize</b> resets stats AND wipes all learned skills. <b>Max</b> caps level 255 / stats Short.MAX / HP·MP 30000.</span>
+            </div>
+            <datalist id="jobList">
+              <option value="0">Beginner</option>
+              <option value="100">Warrior</option><option value="110">Fighter</option><option value="111">Crusader</option><option value="112">Hero</option>
+              <option value="120">Page</option><option value="121">White Knight</option><option value="122">Paladin</option>
+              <option value="130">Spearman</option><option value="131">Dragon Knight</option><option value="132">Dark Knight</option>
+              <option value="200">Magician</option><option value="210">F/P Wizard</option><option value="211">F/P Mage</option><option value="212">F/P Arch Mage</option>
+              <option value="220">I/L Wizard</option><option value="221">I/L Mage</option><option value="222">I/L Arch Mage</option>
+              <option value="230">Cleric</option><option value="231">Priest</option><option value="232">Bishop</option>
+              <option value="300">Archer</option><option value="310">Hunter</option><option value="311">Ranger</option><option value="312">Bowmaster</option>
+              <option value="320">Crossbowman</option><option value="321">Sniper</option><option value="322">Marksman</option>
+              <option value="400">Rogue</option><option value="410">Assassin</option><option value="411">Hermit</option><option value="412">Night Lord</option>
+              <option value="420">Bandit</option><option value="421">Chief Bandit</option><option value="422">Shadower</option>
+              <option value="500">Pirate</option><option value="510">Brawler</option><option value="511">Marauder</option><option value="512">Buccaneer</option>
+              <option value="520">Gunslinger</option><option value="521">Outlaw</option><option value="522">Corsair</option>
+            </datalist>
           </div>
-          <div class="row" style="margin-top:10px;">
-            <button class="primary" onclick="if(confirm('Naturalize '+selected+'?\\n\\n• STR/DEX/INT/LUK → 4\\n• Remaining AP → 5L+4\\n• HP/MP → job natural curve\\n• Remaining SP → 3 × (level−9), 0 for Beginner\\n• ALL learned skills wiped (DB row deleted)\\n\\nThis cannot be undone.')) cmd('naturalize')">Naturalize</button>
-            <button onclick="if(confirm('Max EVERYTHING on '+selected+'?')) cmd('maxstat')">Max everything</button>
-            <span class="sub" style="color:var(--muted); font-size:12px;"><b>Naturalize</b> resets stats AND wipes all learned skills (so the refunded SP is genuinely fresh). <b>Max</b> caps level 255 / stats Short.MAX / HP·MP 30000.</span>
+
+          <div class="panel">
+            <h2>Run GM command <span class="sub">any of <span id="cmdCount">…</span> registered commands</span></h2>
+            <div class="row">
+              <input id="cmdName" list="cmdList" placeholder="command (e.g. warp)" style="flex:1; min-width:140px;">
+              <input id="cmdArgs" placeholder="args (space-separated)" style="flex:2; min-width:160px;">
+              <button class="primary" onclick="runCmd()">Run</button>
+            </div>
+            <datalist id="cmdList"></datalist>
           </div>
-          <datalist id="jobList">
-            <option value="0">Beginner</option>
-            <option value="100">Warrior</option><option value="110">Fighter</option><option value="111">Crusader</option><option value="112">Hero</option>
-            <option value="120">Page</option><option value="121">White Knight</option><option value="122">Paladin</option>
-            <option value="130">Spearman</option><option value="131">Dragon Knight</option><option value="132">Dark Knight</option>
-            <option value="200">Magician</option><option value="210">F/P Wizard</option><option value="211">F/P Mage</option><option value="212">F/P Arch Mage</option>
-            <option value="220">I/L Wizard</option><option value="221">I/L Mage</option><option value="222">I/L Arch Mage</option>
-            <option value="230">Cleric</option><option value="231">Priest</option><option value="232">Bishop</option>
-            <option value="300">Archer</option><option value="310">Hunter</option><option value="311">Ranger</option><option value="312">Bowmaster</option>
-            <option value="320">Crossbowman</option><option value="321">Sniper</option><option value="322">Marksman</option>
-            <option value="400">Rogue</option><option value="410">Assassin</option><option value="411">Hermit</option><option value="412">Night Lord</option>
-            <option value="420">Bandit</option><option value="421">Chief Bandit</option><option value="422">Shadower</option>
-            <option value="500">Pirate</option><option value="510">Brawler</option><option value="511">Marauder</option><option value="512">Buccaneer</option>
-            <option value="520">Gunslinger</option><option value="521">Outlaw</option><option value="522">Corsair</option>
-          </datalist>
         </div>
 
-        <div class="panel">
-          <h2>Run GM command <span class="sub">any of <span id="cmdCount">…</span> registered commands</span></h2>
-          <div class="row">
-            <input id="cmdName" list="cmdList" placeholder="command (e.g. warp)" style="flex:1; min-width:140px;">
-            <input id="cmdArgs" placeholder="args (space-separated)" style="flex:2; min-width:160px;">
-            <button class="primary" onclick="runCmd()">Run</button>
+        <!-- ITEMS SUBTAB -->
+        <div data-subpanel="items" class="hidden">
+          <div class="panel">
+            <h2>Item browser <span class="sub" id="itemMeta">…</span></h2>
+            <div class="row" style="margin-bottom:6px;">
+              <input id="itemSearch" placeholder="Search by name or ID…" style="flex:2; min-width:180px;" oninput="renderItems()">
+              <select id="itemCat" onchange="renderItems()" style="flex:1; min-width:140px;">
+                <option value="">All categories</option>
+              </select>
+              <label class="field" style="flex:0 0 100px;">Qty<input id="itemQty" type="number" value="1" min="1" max="32767"></label>
+            </div>
+            <div class="row" style="margin-bottom:10px; font-size:12px;">
+              <label class="field" style="flex:0 0 130px;">Max Lv req<input id="itemMaxLv" type="number" placeholder="any" oninput="renderItems()"></label>
+              <label class="field" style="flex:0 0 130px;">Min WATK<input id="itemMinWatk" type="number" placeholder="any" oninput="renderItems()"></label>
+              <label class="field" style="flex:0 0 130px;">Min MATK<input id="itemMinMatk" type="number" placeholder="any" oninput="renderItems()"></label>
+              <button onclick="document.getElementById('itemMaxLv').value=''; document.getElementById('itemMinWatk').value=''; document.getElementById('itemMinMatk').value=''; renderItems();" style="align-self:end;">Clear</button>
+              <label class="field" style="margin-left:auto; flex-direction:row; align-items:center; gap:6px;">
+                <input type="checkbox" id="itemRecommended" onchange="renderItems()">
+                <span>Recommended for selected character (top 5 per slot)</span>
+              </label>
+            </div>
+            <div class="sub" style="margin-bottom:6px;">
+              Click an item to give it to <b id="itemTarget" class="selectedName none">(no character selected)</b>. Source: <code>Cosmic/handbook/</code>.
+            </div>
+            <div id="itemsList" class="items-list"><div class="empty">Loading…</div></div>
+            <div class="sub" id="itemsCount" style="margin-top:6px;"></div>
           </div>
-          <datalist id="cmdList"></datalist>
         </div>
       </div>
     </section>
@@ -222,35 +283,6 @@
         <h2>Accounts &amp; characters <span class="sub">all accounts in the DB, online or not. <button onclick="loadAccounts()" style="margin-left:6px;">Refresh</button></span></h2>
         <input id="acctSearch" placeholder="Filter by account or character name…" style="width:100%; margin-bottom:8px;" oninput="renderAccounts()">
         <div id="accountsList"><div class="empty">Click Refresh to load accounts.</div></div>
-      </div>
-    </section>
-
-    <!-- ITEMS TAB -->
-    <section data-panel="items" class="hidden">
-      <div class="panel">
-        <h2>Item browser <span class="sub" id="itemMeta">…</span></h2>
-        <div class="row" style="margin-bottom:6px;">
-          <input id="itemSearch" placeholder="Search by name or ID…" style="flex:2; min-width:180px;" oninput="renderItems()">
-          <select id="itemCat" onchange="renderItems()" style="flex:1; min-width:140px;">
-            <option value="">All categories</option>
-          </select>
-          <label class="field" style="flex:0 0 100px;">Qty<input id="itemQty" type="number" value="1" min="1" max="32767"></label>
-        </div>
-        <div class="row" style="margin-bottom:10px; font-size:12px;">
-          <label class="field" style="flex:0 0 130px;">Max Lv req<input id="itemMaxLv" type="number" placeholder="any" oninput="renderItems()"></label>
-          <label class="field" style="flex:0 0 130px;">Min WATK<input id="itemMinWatk" type="number" placeholder="any" oninput="renderItems()"></label>
-          <label class="field" style="flex:0 0 130px;">Min MATK<input id="itemMinMatk" type="number" placeholder="any" oninput="renderItems()"></label>
-          <button onclick="document.getElementById('itemMaxLv').value=''; document.getElementById('itemMinWatk').value=''; document.getElementById('itemMinMatk').value=''; renderItems();" style="align-self:end;">Clear</button>
-          <label class="field" style="margin-left:auto; flex-direction:row; align-items:center; gap:6px;">
-            <input type="checkbox" id="itemRecommended" onchange="renderItems()">
-            <span>Recommended for selected player (top 5 per slot)</span>
-          </label>
-        </div>
-        <div class="sub" style="margin-bottom:6px;">
-          Click an item to give it to the selected player <b id="itemTarget" class="selectedName none">(no player selected)</b>. Source: <code>Cosmic/handbook/</code> — same IDs the server accepts.
-        </div>
-        <div id="itemsList" class="items-list"><div class="empty">Loading…</div></div>
-        <div class="sub" id="itemsCount" style="margin-top:6px;"></div>
       </div>
     </section>
 
@@ -385,10 +417,30 @@
         document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('active', b === btn));
         document.querySelectorAll('[data-panel]').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== btn.dataset.tab));
         if (btn.dataset.tab === 'accounts' && !accountsCache.length) loadAccounts();
-        if (btn.dataset.tab === 'items' && !itemsCache) loadItems();
-        if (btn.dataset.tab === 'items' && itemsCache) renderItems(); // refresh the "give to" target if it changed
+        // Items live inside the Character workspace now; preload on first visit.
+        if (btn.dataset.tab === 'character' && !itemsCache) loadItems();
       };
     });
+
+    // --- sub-tab nav (inside Character workspace) ---
+    document.querySelectorAll('nav.subtabs button').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('nav.subtabs button').forEach(b => b.classList.toggle('active', b === btn));
+        document.querySelectorAll('[data-subpanel]').forEach(p => p.classList.toggle('hidden', p.dataset.subpanel !== btn.dataset.subtab));
+        if (btn.dataset.subtab === 'items') {
+          if (!itemsCache) loadItems(); else renderItems();
+        }
+      };
+    });
+
+    function onCharPick() {
+      const picker = document.getElementById('charPicker');
+      selected = picker.value || null;
+      renderSelected();
+      // Re-render relevant panels for the new pick.
+      if (latestPlayers) renderSidebar(latestPlayers);
+      if (itemsCache) renderItems();
+    }
 
     // --- networking ---
     async function getJson(url) { const r = await fetch(url); return r.json(); }
@@ -462,22 +514,62 @@
       document.getElementById('bMem').textContent = status.memoryUsedMb + ' / ' + status.memoryMaxMb + ' MB';
       document.getElementById('bUptime').textContent = fmtUptime(status.uptimeMs);
     }
-    function renderPlayers(list) {
-      document.getElementById('playerCount').textContent = list.length ? '(' + list.length + ')' : '';
-      const body = document.getElementById('players');
-      if (!list.length) { body.innerHTML = '<tr><td colspan="8" class="empty">No players online</td></tr>'; selectedPlayerInfo = null; return; }
-      body.innerHTML = '';
-      let selectedPlayer = null;
-      for (const p of list) {
-        const tr = document.createElement('tr');
-        if (p.name === selected) { tr.className = 'selected'; selectedPlayer = p; }
-        tr.innerHTML = `<td>${p.name}</td><td>${p.account}</td><td>${p.job}</td><td>${p.level}</td><td>${p.map}</td><td>${fmt.format(p.meso)}</td><td>${fmt.format(p.nx)}</td><td>${p.godmode ? 'on':'off'}</td>`;
-        tr.onclick = () => { selected = p.name; renderSelected(); renderPlayers(list); if (itemsCache) renderItems(); };
-        body.appendChild(tr);
+    let latestPlayers = null;
+    // Keeps the dropdown options in sync without clobbering the user's current pick.
+    let renderedPickerKey = '';
+
+    function renderSidebar(list) {
+      latestPlayers = list;
+      document.getElementById('playerCount').textContent = list.length ? '· ' + list.length + ' online' : '';
+
+      // Rebuild picker options only when the set of online characters changes.
+      const key = list.map(p => p.name).join('|');
+      const picker = document.getElementById('charPicker');
+      if (key !== renderedPickerKey) {
+        const previous = selected;
+        picker.innerHTML = '<option value="">— pick an online character —</option>' +
+          list.map(p => `<option value="${p.name}">${p.name} — Lv ${p.level} ${p.job}</option>`).join('');
+        if (previous && list.some(p => p.name === previous)) {
+          picker.value = previous;
+        } else if (previous) {
+          // Character we had selected logged out. Drop the selection.
+          selected = null;
+        }
+        renderedPickerKey = key;
       }
-      selectedPlayerInfo = selectedPlayer;
-      renderStatsPanel(selectedPlayer);
+
+      const sbInfo = document.getElementById('sbInfo');
+      const sbEmpty = document.getElementById('sbEmpty');
+      const p = list.find(x => x.name === selected);
+      selectedPlayerInfo = p || null;
+      if (!p) {
+        sbInfo.classList.add('hidden');
+        sbEmpty.classList.remove('hidden');
+        renderStatsPanel(null);
+        return;
+      }
+      sbInfo.classList.remove('hidden');
+      sbEmpty.classList.add('hidden');
+
+      document.getElementById('sbName').textContent = p.name;
+      document.getElementById('sbJob').textContent = `Lv ${p.level} · ${p.job} (${p.jobId})`;
+      document.getElementById('sbMeta').innerHTML =
+        `Map ${p.map}<br>World ${p.world} · Channel ${p.channel}` +
+        (p.godmode ? `<br><span style="color:var(--good);">Godmode ON</span>` : '');
+
+      document.getElementById('sbStats').innerHTML = [
+        ['STR', p.str], ['DEX', p.dex],
+        ['INT', p.int], ['LUK', p.luk],
+        ['Max HP', p.maxHp], ['Max MP', p.maxMp],
+        ['AP', p.ap], ['SP', p.sp],
+        ['Fame', p.fame], ['NX', fmt.format(p.nx)],
+        ['Meso', fmt.format(p.meso)], ['Account', p.account]
+      ].map(([k, v]) => `<span class="k">${k}</span><span class="v">${v}</span>`).join('');
+
+      renderStatsPanel(p);
     }
+    // Kept around because external code/older callbacks call renderPlayers; route them to the new renderer.
+    const renderPlayers = renderSidebar;
 
     function renderStatsPanel(p) {
       const hint = document.getElementById('statsHint');
