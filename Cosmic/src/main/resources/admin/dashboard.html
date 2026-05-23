@@ -1248,6 +1248,10 @@
 
     renderSelected();
     loadCommands();
+    // Items power the sidebar's gear-derived stats (WDEF/MDEF/ACC/EVA/Speed/Jump)
+    // and the Equipment tile tooltips, so kick them off at boot regardless of
+    // which tab the user lands on. Re-render the sidebar once they arrive.
+    loadItems().then(() => { if (latestPlayers) renderSidebar(latestPlayers); });
     refresh();
     setInterval(refresh, 3000);
   </script>
