@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -50,6 +51,9 @@ public class AdminDashboardServer {
         server.createContext("/api/logs", this::handleLogs);
         server.createContext("/api/commands", this::handleCommands);
         server.createContext("/api/accounts", this::handleAccounts);
+        server.createContext("/trainer", this::handleTrainerPage);
+        server.createContext("/api/trainer/state", this::handleTrainerState);
+        server.createContext("/api/trainer/toggle", this::handleTrainerToggle);
         server.setExecutor(Executors.newSingleThreadExecutor(r -> {
             Thread thread = new Thread(r, "AdminDashboard");
             thread.setDaemon(true);
@@ -131,6 +135,64 @@ public class AdminDashboardServer {
                     + "}");
         }
         sendJson(exchange, 200, "[" + String.join(",", rows) + "]");
+    }
+
+    private static final String TRAINER_RESOURCE = "/admin/trainer.html";
+    private static final Path TRAINER_LIVE_PATH = Path.of("src", "main", "resources", "admin", "trainer.html");
+
+    private void handleTrainerPage(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            send(exchange, 405, "text/plain", "Method not allowed");
+            return;
+        }
+        try {
+            String body;
+            if (Files.exists(TRAINER_LIVE_PATH)) {
+                body = Files.readString(TRAINER_LIVE_PATH, StandardCharsets.UTF_8);
+            } else {
+                try (InputStream in = AdminDashboardServer.class.getResourceAsStream(TRAINER_RESOURCE)) {
+                    if (in == null) throw new IOException("trainer.html missing on classpath");
+                    body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            }
+            send(exchange, 200, "text/html", body);
+        } catch (IOException e) {
+            send(exchange, 500, "text/plain", "Failed to load trainer: " + e.getMessage());
+        }
+    }
+
+    private void handleTrainerState(HttpExchange exchange) throws IOException {
+        Map<String, Set<TrainerEngine.Cheat>> snap = TrainerEngine.snapshot();
+        List<String> rows = new ArrayList<>();
+        for (Map.Entry<String, Set<TrainerEngine.Cheat>> e : snap.entrySet()) {
+            List<String> cs = new ArrayList<>();
+            for (TrainerEngine.Cheat c : e.getValue()) cs.add("\"" + c.name() + "\"");
+            rows.add("\"" + json(e.getKey()) + "\":[" + String.join(",", cs) + "]");
+        }
+        sendJson(exchange, 200, "{" + String.join(",", rows) + "}");
+    }
+
+    private void handleTrainerToggle(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendJson(exchange, 405, "{\"ok\":false,\"message\":\"Method not allowed\"}");
+            return;
+        }
+        Map<String, String> body = parseJson(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+        String name = body.getOrDefault("name", "").trim();
+        String cheatName = body.getOrDefault("cheat", "").trim();
+        boolean enabled = Boolean.parseBoolean(body.getOrDefault("enabled", "false"));
+        if (name.isEmpty() || cheatName.isEmpty()) {
+            sendJson(exchange, 400, "{\"ok\":false,\"message\":\"name and cheat are required\"}");
+            return;
+        }
+        try {
+            TrainerEngine.Cheat cheat = TrainerEngine.Cheat.valueOf(cheatName);
+            TrainerEngine.setCheat(name, cheat, enabled);
+            AdminEventLog.add("trainer", (enabled ? "enabled " : "disabled ") + cheatName + " on " + name);
+            sendJson(exchange, 200, "{\"ok\":true,\"message\":\"" + json(cheatName + (enabled ? " ON" : " OFF") + " for " + name) + "\"}");
+        } catch (IllegalArgumentException ex) {
+            sendJson(exchange, 400, "{\"ok\":false,\"message\":\"Unknown cheat: " + json(cheatName) + "\"}");
+        }
     }
 
     private void handleAccounts(HttpExchange exchange) throws IOException {

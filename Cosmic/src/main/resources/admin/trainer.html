@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Maple Lab Trainer</title>
+  <style>
+    :root {
+      --bg:#0e0c0a; --panel:#1a1612; --panel-2:#252019; --ink:#f5ecdc;
+      --muted:#a89580; --line:#3a3027; --accent:#3aa597; --hot:#d4853a; --danger:#c44; --good:#4ea96c;
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; font:14px/1.4 system-ui, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink);
+           min-height:100vh; display:flex; flex-direction:column; }
+    header { padding:14px 20px; background:#000; border-bottom:1px solid var(--line);
+             display:flex; align-items:center; gap:14px; }
+    header h1 { margin:0; font-size:16px; letter-spacing:1px; text-transform:uppercase; color:var(--hot); }
+    header .meta { color:var(--muted); font-size:12px; }
+    main { padding:18px 20px; flex:1; max-width:560px; }
+    .hook { background:var(--panel); border:1px solid var(--line); border-radius:8px;
+            padding:14px; margin-bottom:14px; }
+    .hook label { display:block; color:var(--muted); font-size:11px; text-transform:uppercase;
+                  letter-spacing:0.5px; margin-bottom:6px; }
+    .hook select { width:100%; padding:9px 10px; background:#0a0807; color:var(--ink);
+                   border:1px solid var(--line); border-radius:6px; font-size:14px; }
+    .hook .info { color:var(--muted); font-size:12px; margin-top:8px; }
+    .hook .info b { color:var(--ink); }
+    .cheats { display:grid; gap:10px; }
+    .cheat { background:var(--panel); border:1px solid var(--line); border-radius:8px;
+             padding:12px 14px; display:flex; align-items:center; gap:12px;
+             cursor:pointer; transition:background .15s, border-color .15s; }
+    .cheat:hover { background:var(--panel-2); }
+    .cheat.on { border-color:var(--hot); background:#2a1d10; }
+    .cheat .kbd { font:11px/1 ui-monospace, Consolas, monospace; background:#000;
+                  color:var(--muted); padding:3px 6px; border-radius:3px;
+                  border:1px solid var(--line); flex:0 0 28px; text-align:center; }
+    .cheat .label { flex:1; }
+    .cheat .label .name { font-weight:600; }
+    .cheat .label .desc { color:var(--muted); font-size:12px; }
+    .cheat .indicator { width:38px; height:22px; border-radius:11px;
+                        background:#000; border:1px solid var(--line); position:relative; }
+    .cheat .indicator::after { content:''; position:absolute; top:2px; left:3px;
+                               width:16px; height:16px; border-radius:50%;
+                               background:var(--muted); transition:left .2s, background .2s; }
+    .cheat.on .indicator { background:#3a1f0c; border-color:var(--hot); }
+    .cheat.on .indicator::after { left:18px; background:var(--hot); }
+    .cheat.disabled { opacity:0.45; cursor:not-allowed; }
+    .toast { position:fixed; bottom:18px; right:18px; padding:8px 14px;
+             background:var(--panel); border:1px solid var(--line);
+             border-left:3px solid var(--hot); border-radius:6px;
+             opacity:0; transition:opacity .25s; pointer-events:none; max-width:300px; font-size:13px; }
+    .toast.show { opacity:1; }
+    .toast.err { border-left-color:var(--danger); }
+    footer { padding:12px 20px; color:var(--muted); font-size:11px;
+             border-top:1px solid var(--line); }
+    a { color:var(--accent); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Maple Lab Trainer</h1>
+    <span class="meta" id="status">connecting…</span>
+  </header>
+  <main>
+    <div class="hook">
+      <label>Hooked character</label>
+      <select id="playerPick"><option value="">— select an online character —</option></select>
+      <div class="info" id="hookInfo">No character selected. Toggles are disabled.</div>
+    </div>
+
+    <div class="cheats" id="cheats">
+      <div class="cheat disabled" data-cheat="MOB_VAC" data-key="1">
+        <span class="kbd">1</span>
+        <div class="label"><div class="name">Mob Vac</div><div class="desc">Teleports every mob on the map to you, every tick.</div></div>
+        <div class="indicator"></div>
+      </div>
+      <div class="cheat disabled" data-cheat="KILL_ALL" data-key="2">
+        <span class="kbd">2</span>
+        <div class="label"><div class="name">Auto Kill</div><div class="desc">Instakills every mob on the map. Combine with Mob Vac for a continuous farm.</div></div>
+        <div class="indicator"></div>
+      </div>
+      <div class="cheat disabled" data-cheat="AUTO_LOOT" data-key="3">
+        <span class="kbd">3</span>
+        <div class="label"><div class="name">Auto Loot</div><div class="desc">Force-picks up every drop (mesos, items, NX) — Tubi-style.</div></div>
+        <div class="indicator"></div>
+      </div>
+      <div class="cheat disabled" data-cheat="HEAL_TICK" data-key="4">
+        <span class="kbd">4</span>
+        <div class="label"><div class="name">Heal Tick</div><div class="desc">Restores full HP and MP every tick.</div></div>
+        <div class="indicator"></div>
+      </div>
+      <div class="cheat disabled" data-cheat="GODMODE" data-key="5">
+        <span class="kbd">5</span>
+        <div class="label"><div class="name">God Mode</div><div class="desc">Server-side: mob damage to you becomes 0.</div></div>
+        <div class="indicator"></div>
+      </div>
+    </div>
+  </main>
+  <footer>
+    Hot-keys 1–5 toggle the cheat for the hooked character. Tick rate 300 ms. Cheats persist while the character is online; logging out clears them.
+    · <a href="/">Back to dashboard</a>
+  </footer>
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const cheatEls = document.querySelectorAll('.cheat');
+    const picker = document.getElementById('playerPick');
+    const statusEl = document.getElementById('status');
+    const hookInfo = document.getElementById('hookInfo');
+    let hookedName = localStorage.getItem('mlab.trainer.hook') || '';
+    let toastTimer;
+
+    async function getJson(url) { const r = await fetch(url); return r.json(); }
+    function setStatus(s) { statusEl.textContent = s; }
+    function showToast(msg, isErr) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.toggle('err', !!isErr);
+      t.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+    }
+
+    async function refreshPicker() {
+      try {
+        const players = await getJson('/api/players');
+        const previous = hookedName;
+        picker.innerHTML = '<option value="">— select an online character —</option>'
+          + players.map(p => `<option value="${p.name}"${p.name === previous ? ' selected' : ''}>${p.name} — Lv ${p.level} ${p.job} (W${p.world} Ch${p.channel})</option>`).join('');
+        // If the previously hooked character is no longer online, drop the hook.
+        if (previous && !players.some(p => p.name === previous)) {
+          hookedName = '';
+          localStorage.removeItem('mlab.trainer.hook');
+          picker.value = '';
+        }
+        setStatus(players.length + ' online');
+      } catch (e) {
+        setStatus('server unreachable');
+      }
+      updateHookUi();
+    }
+
+    function updateHookUi() {
+      const have = !!hookedName;
+      cheatEls.forEach(el => el.classList.toggle('disabled', !have));
+      hookInfo.innerHTML = have
+        ? `Toggles affect <b>${hookedName}</b>. Tap a row or press its hot-key to flip it.`
+        : 'No character selected. Toggles are disabled.';
+    }
+
+    async function refreshState() {
+      try {
+        const state = await getJson('/api/trainer/state');
+        const cheats = (state && hookedName && state[hookedName]) || [];
+        cheatEls.forEach(el => {
+          const isActive = cheats.includes(el.dataset.cheat);
+          el.classList.toggle('on', isActive);
+        });
+      } catch (e) {}
+    }
+
+    async function toggle(cheat) {
+      if (!hookedName) { showToast('Select a character first.', true); return; }
+      const el = document.querySelector(`.cheat[data-cheat="${cheat}"]`);
+      const enable = !el.classList.contains('on');
+      el.classList.toggle('on', enable); // optimistic
+      try {
+        const r = await fetch('/api/trainer/toggle', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: hookedName, cheat, enabled: enable })
+        });
+        const j = await r.json();
+        if (!j.ok) {
+          el.classList.toggle('on', !enable); // rollback
+          showToast(j.message || 'Failed', true);
+        } else {
+          showToast(j.message);
+        }
+      } catch (e) {
+        el.classList.toggle('on', !enable);
+        showToast('Request failed: ' + e.message, true);
+      }
+    }
+
+    picker.addEventListener('change', () => {
+      hookedName = picker.value;
+      if (hookedName) localStorage.setItem('mlab.trainer.hook', hookedName);
+      else localStorage.removeItem('mlab.trainer.hook');
+      updateHookUi();
+      refreshState();
+    });
+
+    cheatEls.forEach(el => {
+      el.addEventListener('click', () => {
+        if (el.classList.contains('disabled')) return;
+        toggle(el.dataset.cheat);
+      });
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+      const el = document.querySelector(`.cheat[data-key="${e.key}"]`);
+      if (el && !el.classList.contains('disabled')) {
+        e.preventDefault();
+        toggle(el.dataset.cheat);
+      }
+    });
+
+    refreshPicker();
+    refreshState();
+    setInterval(refreshPicker, 4000);
+    setInterval(refreshState, 1500);
+  </script>
+</body>
+</html>

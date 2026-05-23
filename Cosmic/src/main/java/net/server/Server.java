@@ -951,6 +951,7 @@ public class Server {
         log.info("Admin dashboard listening on http://127.0.0.1:8787");
 
         net.server.admin.LabOverrides.applyToLiveWorlds();
+        net.server.admin.TrainerEngine.start();
 
         for (Channel ch : this.getAllChannels()) {
             ch.reloadEventScriptManager();
