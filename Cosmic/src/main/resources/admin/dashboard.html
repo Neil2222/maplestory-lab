@@ -116,6 +116,7 @@
     .sidebar .sb-stats { display:grid; grid-template-columns: 1fr 1fr; gap:5px 12px; margin-top:10px; font-size:12.5px; }
     .sidebar .sb-stats .k { color:var(--muted); }
     .sidebar .sb-stats .v { color:var(--ink); font-weight:600; text-align:right; }
+    .sidebar .sb-stats .v .delta { color:var(--good); font-size:11px; margin-left:4px; font-weight:600; }
     .sidebar .sb-section { border-top:1px solid var(--line); padding-top:12px; margin-top:14px; }
     .sidebar .sb-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
     .sidebar .sb-actions button { padding:5px 10px; font-size:12.5px; flex:1 1 auto; min-width:0; }
@@ -130,9 +131,7 @@
     .sb-equipped .eq-slot { color:var(--muted); flex:0 0 60px; font-size:11px; }
     .sb-equipped .eq-name { color:var(--ink); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .sb-equipped .eq-empty { color:var(--muted); font-size:12px; font-style:italic; padding:8px 0; }
-    .equip-cols { display:grid; grid-template-columns: minmax(280px, 1fr) 240px; gap:14px; align-items:start; }
-    @media (max-width: 900px) { .equip-cols { grid-template-columns: 1fr; } }
-    .paperdoll { display:grid; grid-template-columns: repeat(4, 1fr); gap:6px; padding:6px; max-width:300px; margin:0 auto; }
+    .paperdoll { display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; padding:8px; max-width:380px; margin:0 auto; }
     .pd-slot { position:relative; aspect-ratio:1; background:var(--panel-2); border:1px solid var(--line); border-radius:6px;
                display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--muted);
                cursor:default; padding:4px; text-align:center; transition:border-color .12s, background .12s; }
@@ -143,10 +142,6 @@
     .pd-slot .pd-label { position:absolute; top:1px; left:3px; font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:0.3px; pointer-events:none; }
     .pd-slot .pd-icon { width:32px; height:32px; image-rendering:pixelated; object-fit:contain; }
     .pd-slot .pd-icon.fallback { font:9px ui-monospace, Consolas, monospace; color:var(--muted); display:flex; align-items:center; justify-content:center; }
-    .eq-totals { display:grid; grid-template-columns: 1fr auto; gap:4px 12px; font-size:13px; }
-    .eq-totals .k { color:var(--muted); }
-    .eq-totals .v { color:var(--ink); font-weight:600; text-align:right; font:13px ui-monospace, Consolas, monospace; }
-    .eq-totals .delta { color:var(--good); font-size:11px; margin-left:6px; }
     nav.subtabs { display:flex; gap:2px; margin-bottom:12px; border-bottom:1px solid var(--line); padding-bottom:0; }
     nav.subtabs button { background:transparent; color:var(--muted); border:0; border-bottom:2px solid transparent; padding:8px 14px; font:inherit; cursor:pointer; }
     nav.subtabs button:hover { color:var(--ink); }
@@ -278,18 +273,12 @@
 
         <!-- EQUIPMENT SUBTAB -->
         <div data-subpanel="equipment" class="hidden">
-          <div class="equip-cols">
-            <div class="panel">
-              <h2>Equipment <span class="sub" id="eqHint">select a character</span></h2>
-              <div class="paperdoll" id="paperDoll"></div>
-              <div class="sub" style="margin-top:10px; color:var(--muted); font-size:12px;">
-                Click a filled slot to unequip — item goes back to the EQUIP inventory tab.
-                Empty slots are dashed. Cash equips (cosmetic overlay) appear in a smaller row below.
-              </div>
-            </div>
-            <div class="panel">
-              <h2>Totals <span class="sub">includes gear bonuses</span></h2>
-              <div class="eq-totals" id="eqTotals"></div>
+          <div class="panel">
+            <h2>Equipment <span class="sub" id="eqHint">select a character</span></h2>
+            <div class="paperdoll" id="paperDoll"></div>
+            <div class="sub" style="margin-top:10px; color:var(--muted); font-size:12px; text-align:center;">
+              Click a filled slot to unequip — item goes back to the EQUIP inventory tab.
+              Totals with gear deltas are in the left sidebar.
             </div>
           </div>
         </div>
@@ -634,9 +623,20 @@
         `Map ${p.map}<br>World ${p.world} · Channel ${p.channel}` +
         (p.godmode ? `<br><span style="color:var(--good);">Godmode ON</span>` : '');
 
+      // Stat with optional "+N" delta when gear bumps the base. Totals are the
+      // server's totalX values (base + gear + buffs); we show the gear delta
+      // explicitly so it's obvious where the boost comes from.
+      const withDelta = (total, base) => {
+        const d = total - base;
+        return d > 0 ? `${total}<span class="delta">+${d}</span>` : String(total);
+      };
       document.getElementById('sbStats').innerHTML = [
-        ['STR', p.str], ['DEX', p.dex],
-        ['INT', p.int], ['LUK', p.luk],
+        ['STR',    withDelta(p.totalStr, p.str)],
+        ['DEX',    withDelta(p.totalDex, p.dex)],
+        ['INT',    withDelta(p.totalInt, p.int)],
+        ['LUK',    withDelta(p.totalLuk, p.luk)],
+        ['WATK',   p.totalWatk],
+        ['Magic',  p.totalMagic],
         ['Max HP', p.maxHp], ['Max MP', p.maxMp],
         ['AP', p.ap], ['SP', p.sp],
         ['Fame', p.fame], ['NX', fmt.format(p.nx)],
@@ -663,16 +663,13 @@
     function renderEquipment(p) {
       const eqHint = document.getElementById('eqHint');
       const doll = document.getElementById('paperDoll');
-      const totals = document.getElementById('eqTotals');
       if (!p) {
         if (eqHint) eqHint.textContent = 'select a character';
         if (doll) doll.innerHTML = '';
-        if (totals) totals.innerHTML = '';
         return;
       }
       if (eqHint) eqHint.innerHTML = `<b style="color:var(--ink);">${escapeHtml(p.name)}</b> · Lv ${p.level} ${escapeHtml(p.job)}`;
 
-      // Index equipped items by slot for quick lookup.
       const bySlot = {};
       for (const e of (p.equipped || [])) bySlot[e.slot] = e;
 
@@ -690,21 +687,6 @@
           }
           return `<div class="pd-slot empty" style="${style}"><span class="pd-label">${escapeHtml(label)}</span></div>`;
         }).join('');
-      }
-
-      if (totals) {
-        const dStr = p.totalStr - p.str, dDex = p.totalDex - p.dex, dInt = p.totalInt - p.int, dLuk = p.totalLuk - p.luk;
-        const delta = n => n > 0 ? `<span class="delta">+${n}</span>` : '';
-        totals.innerHTML = [
-          ['STR (total)',  p.totalStr,  delta(dStr)],
-          ['DEX (total)',  p.totalDex,  delta(dDex)],
-          ['INT (total)',  p.totalInt,  delta(dInt)],
-          ['LUK (total)',  p.totalLuk,  delta(dLuk)],
-          ['WATK',         p.totalWatk, ''],
-          ['Magic',        p.totalMagic,''],
-          ['Max HP',       p.maxHp,     ''],
-          ['Max MP',       p.maxMp,     ''],
-        ].map(([k, v, d]) => `<span class="k">${k}</span><span class="v">${v}${d}</span>`).join('');
       }
     }
 
