@@ -1,10 +1,12 @@
 package net.server.admin;
 
 import client.Character;
+import client.command.CommandsExecutor;
 import client.inventory.manipulator.InventoryManipulator;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import net.server.Server;
+import net.server.channel.Channel;
 import net.server.world.World;
 import server.CashShop;
 
@@ -37,6 +39,8 @@ public class AdminDashboardServer {
         server.createContext("/api/status", this::handleStatus);
         server.createContext("/api/players", this::handlePlayers);
         server.createContext("/api/action", this::handleAction);
+        server.createContext("/api/logs", this::handleLogs);
+        server.createContext("/api/commands", this::handleCommands);
         server.setExecutor(Executors.newSingleThreadExecutor(r -> {
             Thread thread = new Thread(r, "AdminDashboard");
             thread.setDaemon(true);
@@ -73,12 +77,56 @@ public class AdminDashboardServer {
     }
 
     private void handleStatus(HttpExchange exchange) throws IOException {
+        Runtime rt = Runtime.getRuntime();
+        long usedMb = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024);
+        long maxMb = rt.maxMemory() / (1024 * 1024);
+        int threads = Thread.activeCount();
+
+        List<String> worldEntries = new ArrayList<>();
+        for (World world : Server.getInstance().getWorlds()) {
+            List<Channel> channels = world.getChannels();
+            worldEntries.add("{"
+                    + "\"id\":" + world.getId() + ","
+                    + "\"channels\":" + channels.size() + ","
+                    + "\"players\":" + world.getPlayerStorage().getAllCharacters().size() + ","
+                    + "\"expRate\":" + world.getExpRate() + ","
+                    + "\"dropRate\":" + world.getDropRate() + ","
+                    + "\"mesoRate\":" + world.getMesoRate()
+                    + "}");
+        }
+
         sendJson(exchange, 200, "{"
                 + "\"online\":" + Server.getInstance().isOnline() + ","
                 + "\"uptimeMs\":" + (System.currentTimeMillis() - startedAt) + ","
-                + "\"worlds\":" + Server.getInstance().getWorlds().size() + ","
-                + "\"players\":" + allOnlinePlayers().size()
+                + "\"worlds\":[" + String.join(",", worldEntries) + "],"
+                + "\"players\":" + allOnlinePlayers().size() + ","
+                + "\"memoryUsedMb\":" + usedMb + ","
+                + "\"memoryMaxMb\":" + maxMb + ","
+                + "\"threads\":" + threads + ","
+                + "\"autosaveMinutes\":5"
                 + "}");
+    }
+
+    private void handleLogs(HttpExchange exchange) throws IOException {
+        List<String> rows = new ArrayList<>();
+        for (AdminEventLog.Entry e : AdminEventLog.snapshot()) {
+            rows.add("{"
+                    + "\"t\":" + e.timestamp() + ","
+                    + "\"type\":\"" + json(e.type()) + "\","
+                    + "\"message\":\"" + json(e.message()) + "\""
+                    + "}");
+        }
+        sendJson(exchange, 200, "[" + String.join(",", rows) + "]");
+    }
+
+    private void handleCommands(HttpExchange exchange) throws IOException {
+        List<String> names = new ArrayList<>(CommandsExecutor.getInstance().getRegisteredCommandNames());
+        java.util.Collections.sort(names);
+        List<String> wrapped = new ArrayList<>();
+        for (String n : names) {
+            wrapped.add("\"" + json(n) + "\"");
+        }
+        sendJson(exchange, 200, "[" + String.join(",", wrapped) + "]");
     }
 
     private void handlePlayers(HttpExchange exchange) throws IOException {
@@ -176,6 +224,19 @@ public class AdminDashboardServer {
                     }
                     sendOk(exchange, "Notice sent.");
                 }
+                case "runCommand" -> {
+                    Character target = requirePlayer(body);
+                    String cmdName = body.getOrDefault("command", "").trim();
+                    String argsStr = body.getOrDefault("args", "").trim();
+                    String[] args = argsStr.isBlank() ? new String[]{} : argsStr.split("\\s+");
+                    boolean ran = CommandsExecutor.getInstance().executeDirect(target.getClient(), cmdName, args);
+                    if (ran) {
+                        AdminEventLog.add("command", "!" + cmdName + (argsStr.isBlank() ? "" : " " + argsStr) + " on " + target.getName());
+                        sendOk(exchange, "Ran !" + cmdName + " on " + target.getName() + ".");
+                    } else {
+                        sendJson(exchange, 400, "{\"ok\":false,\"message\":\"Unknown command: " + json(cmdName) + "\"}");
+                    }
+                }
                 case "shutdown" -> {
                     int saved = 0;
                     for (World world : Server.getInstance().getWorlds()) {
@@ -232,6 +293,7 @@ public class AdminDashboardServer {
     }
 
     private void sendOk(HttpExchange exchange, String message) throws IOException {
+        AdminEventLog.add("action", message);
         sendJson(exchange, 200, "{\"ok\":true,\"message\":\"" + json(message) + "\"}");
     }
 

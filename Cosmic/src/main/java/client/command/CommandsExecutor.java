@@ -248,6 +248,25 @@ public class CommandsExecutor {
         return commandsNameDesc;
     }
 
+    public boolean executeDirect(Client client, String commandName, String[] args) {
+        if (commandName == null || commandName.isBlank()) {
+            return false;
+        }
+        Command command = registeredCommands.get(commandName.toLowerCase());
+        if (command == null) {
+            return false;
+        }
+        command.execute(client, args == null ? new String[]{} : args);
+        log.info("Admin executed {} (args={}) on {}", commandName,
+                args == null ? "[]" : String.join(" ", args),
+                client.getPlayer() != null ? client.getPlayer().getName() : "?");
+        return true;
+    }
+
+    public java.util.Set<String> getRegisteredCommandNames() {
+        return registeredCommands.keySet();
+    }
+
     public void handle(Client client, String message) {
         if (client.tryacquireClient()) {
             try {
