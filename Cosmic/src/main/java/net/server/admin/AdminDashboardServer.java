@@ -500,6 +500,12 @@ public class AdminDashboardServer {
                     + "\"fame\":" + player.getFame() + ","
                     + "\"exp\":" + player.getExp() + ","
                     + "\"godmode\":" + player.isLocalGodMode() + ","
+                    + "\"totalStr\":" + player.getTotalStr() + ","
+                    + "\"totalDex\":" + player.getTotalDex() + ","
+                    + "\"totalInt\":" + player.getTotalInt() + ","
+                    + "\"totalLuk\":" + player.getTotalLuk() + ","
+                    + "\"totalWatk\":" + player.getTotalWatk() + ","
+                    + "\"totalMagic\":" + player.getTotalMagic() + ","
                     + "\"equipped\":" + buildEquippedJson(player)
                     + "}");
         }
@@ -829,6 +835,16 @@ public class AdminDashboardServer {
                     String name = target.getName();
                     target.getClient().disconnect(false, false);
                     sendOk(exchange, "Kicked '" + name + "'.");
+                }
+                case "unequip" -> {
+                    Character target = requirePlayer(body);
+                    short slot = Short.parseShort(body.getOrDefault("slot", "0"));
+                    if (slot >= 0) throw new IllegalArgumentException("Slot must be negative (equipped position).");
+                    Inventory eqp = target.getInventory(InventoryType.EQUIP);
+                    short free = eqp.getNextFreeSlot();
+                    if (free < 0) throw new IllegalStateException("EQUIP inventory is full — make room first.");
+                    InventoryManipulator.unequip(target.getClient(), slot, free);
+                    sendOk(exchange, "Unequipped slot " + slot + " on " + target.getName() + " into EQUIP slot " + free + ".");
                 }
                 case "notice" -> {
                     String message = body.getOrDefault("message", "").trim();
