@@ -631,13 +631,17 @@
         `Map ${p.map}<br>World ${p.world} · Channel ${p.channel}` +
         (p.godmode ? `<br><span style="color:var(--good);">Godmode ON</span>` : '');
 
-      // Stat with optional "+N" delta when gear bumps the base. Totals are the
-      // server's totalX values (base + gear + buffs); we show the gear delta
-      // explicitly so it's obvious where the boost comes from.
+      // STR/DEX/INT/LUK/Magic/Watk: server already exposes total* values via
+      // Character.getTotalX. Show those with a "+N" delta when gear is doing
+      // the lifting.
       const withDelta = (total, base) => {
         const d = total - base;
         return d > 0 ? `${total}<span class="delta">+${d}</span>` : String(total);
       };
+      // WDEF/MDEF/ACC/EVA/SPEED/JUMP: Cosmic doesn't track totals server-side.
+      // Sum them from itemsCache lookups on the equipped[] list — that's the
+      // gear contribution. (SPEED/JUMP base is 100; the rest are gear-only.)
+      const gear = sumEquipBonuses(p.equipped, itemsByIdMap()) || {PDD:0,MDD:0,ACC:0,EVA:0,Speed:0,Jump:0};
       document.getElementById('sbStats').innerHTML = [
         ['STR',    withDelta(p.totalStr, p.str)],
         ['DEX',    withDelta(p.totalDex, p.dex)],
@@ -645,6 +649,12 @@
         ['LUK',    withDelta(p.totalLuk, p.luk)],
         ['WATK',   p.totalWatk],
         ['Magic',  p.totalMagic],
+        ['WDEF',   gear.PDD],
+        ['MDEF',   gear.MDD],
+        ['ACC',    gear.ACC],
+        ['EVA',    gear.EVA],
+        ['Speed',  100 + gear.Speed],
+        ['Jump',   100 + gear.Jump],
         ['Max HP', p.maxHp], ['Max MP', p.maxMp],
         ['AP', p.ap], ['SP', p.sp],
         ['Fame', p.fame], ['NX', fmt.format(p.nx)],
@@ -704,6 +714,23 @@
           return `<div class="pd-slot empty" style="${style}"><span class="pd-label">${escapeHtml(label)}</span></div>`;
         }).join('');
       }
+    }
+
+    // Sum a few gear-only stats Cosmic doesn't expose as Character totals.
+    // Returns null until itemsCache is loaded; sidebar falls back to zeros.
+    function sumEquipBonuses(equipped, byId) {
+      if (!equipped || !byId) return null;
+      const keys = ['PDD','MDD','ACC','EVA','Speed','Jump'];
+      const total = {};
+      for (const k of keys) total[k] = 0;
+      for (const e of equipped) {
+        const m = byId.get(e.itemId);
+        if (!m || !m.stats) continue;
+        for (const k of keys) {
+          if (m.stats[k]) total[k] += m.stats[k];
+        }
+      }
+      return total;
     }
 
     // Lookup map for itemsCache. Cached per cache-instance so we don't rebuild on
