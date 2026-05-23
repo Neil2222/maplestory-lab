@@ -2,13 +2,16 @@ package net.server.admin;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import server.ItemInformationProvider;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -28,7 +31,7 @@ public final class ItemHandbook {
     private static final Logger log = LoggerFactory.getLogger(ItemHandbook.class);
     private static final Pattern LINE = Pattern.compile("^\\s*(\\d+)\\s*-\\s*([^-]+?)\\s*-\\s*(.*)$");
 
-    public record Item(int id, String name, String category, String description) {}
+    public record Item(int id, String name, String category, String description, Map<String, Integer> stats) {}
 
     private static volatile List<Item> cached;
 
@@ -64,10 +67,42 @@ public final class ItemHandbook {
             }
         }
 
+        // Enrich equip items with canonical name (from WZ via ItemInformationProvider)
+        // and a slim copy of equip stats. We only call IIP for items whose category
+        // starts with "Equip/" — for Use/Etc/Setup/etc. the handbook name is fine and
+        // there are no equip stats to surface.
+        ItemInformationProvider iip = ItemInformationProvider.getInstance();
+        for (int i = 0; i < all.size(); i++) {
+            Item it = all.get(i);
+            if (!it.category.startsWith("Equip/")) continue;
+            try {
+                String canonical = iip.getName(it.id);
+                Map<String, Integer> raw = iip.getEquipStats(it.id);
+                Map<String, Integer> slim = raw == null ? Map.of() : slimStats(raw);
+                all.set(i, new Item(it.id, canonical != null && !canonical.isBlank() ? canonical : it.name,
+                        it.category, it.description, slim));
+            } catch (Exception e) {
+                // WZ data missing or malformed — keep the handbook-only record.
+            }
+        }
+
         all.sort((a, b) -> Integer.compare(a.id, b.id));
         cached = List.copyOf(all);
-        log.info("Loaded {} items from handbook.", cached.size());
+        log.info("Loaded {} items from handbook (equips enriched with IIP stats).", cached.size());
         return cached;
+    }
+
+    /** Drops zero values and uninteresting keys so the response payload stays small. */
+    private static Map<String, Integer> slimStats(Map<String, Integer> raw) {
+        Map<String, Integer> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> e : raw.entrySet()) {
+            Integer v = e.getValue();
+            if (v == null || v == 0) continue;
+            String k = e.getKey();
+            if (k.equals("cursed") || k.equals("success") || k.equals("fs") || k.equals("cash")) continue;
+            out.put(k, v);
+        }
+        return out;
     }
 
     private static void parseInto(Path file, String category, List<Item> sink) {
@@ -79,7 +114,7 @@ public final class ItemHandbook {
                     int id = Integer.parseInt(m.group(1));
                     String name = m.group(2).trim();
                     String desc = m.group(3).trim();
-                    sink.add(new Item(id, name, category, desc));
+                    sink.add(new Item(id, name, category, desc, Map.of()));
                 } catch (NumberFormatException ignored) {}
             });
         } catch (IOException e) {

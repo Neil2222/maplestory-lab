@@ -89,12 +89,16 @@
     .char-stats { margin:6px 0 10px; font-size:12px; }
     .char-grid { display:grid; gap:8px; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
     .items-list { max-height:560px; overflow:auto; border:1px solid var(--line); border-radius:6px; background:#13100d; }
-    .item-row { display:grid; grid-template-columns: 90px 1fr 140px auto; gap:10px; padding:6px 12px; border-bottom:1px solid #20180f; align-items:center; cursor:pointer; }
+    .item-row { display:grid; grid-template-columns: 80px 1.4fr 1fr 120px auto; gap:10px; padding:6px 12px; border-bottom:1px solid #20180f; align-items:center; cursor:pointer; }
     .item-row:hover { background:var(--panel-2); }
     .item-row:last-child { border-bottom:0; }
     .item-row .iid { font:12px ui-monospace, Consolas, monospace; color:var(--muted); }
     .item-row .iname { color:var(--ink); }
     .item-row .icat { color:var(--muted); font-size:12px; }
+    .item-row .istats { font:12px ui-monospace, Consolas, monospace; color:#c8b48a; }
+    .item-row .istats .req { color:#d49a3a; }
+    .item-row .istats .bon { color:#7fb98c; }
+    .item-row .istats .sep { color:var(--muted); }
     .item-row .igive { background:transparent; border:1px solid var(--accent-2); color:var(--accent); padding:3px 10px; border-radius:4px; font-size:12px; cursor:pointer; }
     .item-row .igive:hover { background:var(--accent-2); color:#fff; }
   </style>
@@ -222,12 +226,18 @@
     <section data-panel="items" class="hidden">
       <div class="panel">
         <h2>Item browser <span class="sub" id="itemMeta">…</span></h2>
-        <div class="row" style="margin-bottom:10px;">
+        <div class="row" style="margin-bottom:6px;">
           <input id="itemSearch" placeholder="Search by name or ID…" style="flex:2; min-width:180px;" oninput="renderItems()">
           <select id="itemCat" onchange="renderItems()" style="flex:1; min-width:140px;">
             <option value="">All categories</option>
           </select>
           <label class="field" style="flex:0 0 100px;">Qty<input id="itemQty" type="number" value="1" min="1" max="32767"></label>
+        </div>
+        <div class="row" style="margin-bottom:10px; font-size:12px;">
+          <label class="field" style="flex:0 0 130px;">Max Lv req<input id="itemMaxLv" type="number" placeholder="any" oninput="renderItems()"></label>
+          <label class="field" style="flex:0 0 130px;">Min WATK<input id="itemMinWatk" type="number" placeholder="any" oninput="renderItems()"></label>
+          <label class="field" style="flex:0 0 130px;">Min MATK<input id="itemMinMatk" type="number" placeholder="any" oninput="renderItems()"></label>
+          <button onclick="document.getElementById('itemMaxLv').value=''; document.getElementById('itemMinWatk').value=''; document.getElementById('itemMinMatk').value=''; renderItems();" style="align-self:end;">Clear</button>
         </div>
         <div class="sub" style="margin-bottom:6px;">
           Click an item to give it to the selected player <b id="itemTarget" class="selectedName none">(no player selected)</b>. Source: <code>Cosmic/handbook/</code> — same IDs the server accepts.
@@ -692,16 +702,19 @@
       if (!itemsCache) return;
       const q = (document.getElementById('itemSearch').value || '').toLowerCase().trim();
       const cat = document.getElementById('itemCat').value;
+      const maxLv = Number(document.getElementById('itemMaxLv').value || 0);
+      const minWatk = Number(document.getElementById('itemMinWatk').value || 0);
+      const minMatk = Number(document.getElementById('itemMinMatk').value || 0);
       let filtered = itemsCache;
       if (cat) filtered = filtered.filter(i => i.cat === cat);
       if (q) {
-        // Numeric query searches by id prefix; word query searches name (case-insensitive).
-        if (/^\d+$/.test(q)) {
-          filtered = filtered.filter(i => String(i.id).startsWith(q));
-        } else {
-          filtered = filtered.filter(i => i.name.toLowerCase().includes(q));
-        }
+        if (/^\d+$/.test(q)) filtered = filtered.filter(i => String(i.id).startsWith(q));
+        else filtered = filtered.filter(i => i.name.toLowerCase().includes(q));
       }
+      if (maxLv > 0) filtered = filtered.filter(i => (i.stats?.reqLevel || 0) <= maxLv);
+      if (minWatk > 0) filtered = filtered.filter(i => (i.stats?.PAD || 0) >= minWatk);
+      if (minMatk > 0) filtered = filtered.filter(i => (i.stats?.MAD || 0) >= minMatk);
+
       const total = filtered.length;
       const shown = filtered.slice(0, 300);
       const list = document.getElementById('itemsList');
@@ -711,6 +724,7 @@
           `<div class="item-row" onclick="giveItem(${i.id})">
              <span class="iid">${i.id}</span>
              <span class="iname">${escapeHtml(i.name)}</span>
+             <span class="istats">${formatStats(i.stats)}</span>
              <span class="icat">${escapeHtml(i.cat)}</span>
              <button class="igive" onclick="event.stopPropagation(); giveItem(${i.id})">Give</button>
            </div>`).join('');
@@ -720,6 +734,26 @@
       const t = document.getElementById('itemTarget');
       if (selected) { t.textContent = selected; t.classList.remove('none'); }
       else { t.textContent = '(no player selected)'; t.classList.add('none'); }
+    }
+
+    // Maps stat keys to human-friendly labels. "inc" prefix was stripped server-side.
+    const STAT_BONUS_LABELS = {
+      STR:'STR', DEX:'DEX', INT:'INT', LUK:'LUK',
+      MHP:'HP', MMP:'MP', PAD:'WATK', MAD:'MATK', PDD:'WDEF', MDD:'MDEF',
+      ACC:'ACC', EVA:'EVA', Speed:'SPD', Jump:'JMP'
+    };
+    function formatStats(s) {
+      if (!s) return '';
+      const parts = [];
+      if (s.reqLevel) parts.push(`<span class="req">Lv ${s.reqLevel}</span>`);
+      const reqStats = ['reqSTR','reqDEX','reqINT','reqLUK'].filter(k => s[k]).map(k => `${k.slice(3)} ${s[k]}`);
+      if (reqStats.length) parts.push(`<span class="req">${reqStats.join(' ')}</span>`);
+      const bonus = [];
+      for (const [k, lbl] of Object.entries(STAT_BONUS_LABELS)) {
+        if (s[k]) bonus.push(`<span class="bon">${lbl}+${s[k]}</span>`);
+      }
+      if (s.tuc) bonus.push(`<span class="bon">slots ${s.tuc}</span>`);
+      return [...parts, ...bonus].join(' <span class="sep">·</span> ');
     }
     function giveItem(itemId) {
       if (!selected) { toast('Select a player on the Players tab first.', true); return; }

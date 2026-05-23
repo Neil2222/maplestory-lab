@@ -224,8 +224,7 @@ public class AdminDashboardServer {
 
     private void handleItems(HttpExchange exchange) throws IOException {
         List<ItemHandbook.Item> items = ItemHandbook.load();
-        // ~24k items — keep payload lean by skipping descriptions in the list response.
-        StringBuilder sb = new StringBuilder(items.size() * 60);
+        StringBuilder sb = new StringBuilder(items.size() * 80);
         sb.append('[');
         boolean first = true;
         for (ItemHandbook.Item it : items) {
@@ -233,7 +232,18 @@ public class AdminDashboardServer {
             first = false;
             sb.append("{\"id\":").append(it.id())
               .append(",\"name\":\"").append(json(it.name())).append("\"")
-              .append(",\"cat\":\"").append(json(it.category())).append("\"}");
+              .append(",\"cat\":\"").append(json(it.category())).append("\"");
+            if (!it.stats().isEmpty()) {
+                sb.append(",\"stats\":{");
+                boolean firstStat = true;
+                for (Map.Entry<String, Integer> e : it.stats().entrySet()) {
+                    if (!firstStat) sb.append(',');
+                    firstStat = false;
+                    sb.append("\"").append(json(e.getKey())).append("\":").append(e.getValue());
+                }
+                sb.append('}');
+            }
+            sb.append('}');
         }
         sb.append(']');
         sendJson(exchange, 200, sb.toString());
