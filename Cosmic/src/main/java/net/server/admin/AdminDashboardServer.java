@@ -22,9 +22,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -57,8 +62,11 @@ public class AdminDashboardServer {
         server.createContext("/api/trainer/state", this::handleTrainerState);
         server.createContext("/api/trainer/toggle", this::handleTrainerToggle);
         server.createContext("/api/trainer/offset", this::handleTrainerOffset);
-        server.setExecutor(Executors.newSingleThreadExecutor(r -> {
-            Thread thread = new Thread(r, "AdminDashboard");
+        // Small fixed pool so concurrent slow requests (icon proxy fetches) don't
+        // block fast endpoints like /api/status and /api/action.
+        java.util.concurrent.atomic.AtomicInteger n = new java.util.concurrent.atomic.AtomicInteger();
+        server.setExecutor(Executors.newFixedThreadPool(8, r -> {
+            Thread thread = new Thread(r, "AdminDashboard-" + n.incrementAndGet());
             thread.setDaemon(true);
             return thread;
         }));
@@ -224,12 +232,20 @@ public class AdminDashboardServer {
     }
 
     private static final Path ADMIN_ICONS_DIR = Path.of("admin-icons");
+    private static final String UPSTREAM_ICON_URL = "https://maplestory.io/api/GMS/83/item/%d/icon";
+    private static final HttpClient ICON_HTTP = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(3))
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .build();
+    /** Item IDs that MapleStory.io doesn't have — don't re-fetch them this session. */
+    private static final java.util.Set<Integer> iconNegative = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     /**
-     * Serves icon PNGs from the local <code>admin-icons/</code> folder next to
-     * config.yaml. Drop a v83 icon dump in there (filenames "{itemId}.png") and
-     * cards in the dashboard light up. Missing files return 404 so the UI can
-     * fall back to a placeholder without breaking.
+     * Serves icon PNGs from the local <code>admin-icons/</code> folder. On a cache
+     * miss, fetches once from maplestory.io's free v83 API and writes the PNG to
+     * disk so subsequent requests are served locally. Negative results (upstream
+     * 404 or fetch error) are remembered in-memory so we don't repeatedly hammer
+     * the upstream for items it doesn't have.
      */
     private void handleIcon(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
@@ -240,8 +256,10 @@ public class AdminDashboardServer {
         catch (NumberFormatException e) { send(exchange, 400, "text/plain", "bad id"); return; }
 
         Path file = ADMIN_ICONS_DIR.resolve(id + ".png");
+        if (!Files.exists(file) && !iconNegative.contains(id)) {
+            tryFetchIcon(id, file);
+        }
         if (!Files.exists(file)) {
-            // 404 is the signal to the client to use the placeholder, not an error.
             exchange.getResponseHeaders().set("Cache-Control", "no-store");
             exchange.sendResponseHeaders(404, -1);
             exchange.close();
@@ -252,6 +270,24 @@ public class AdminDashboardServer {
         exchange.getResponseHeaders().set("Cache-Control", "public, max-age=86400");
         exchange.sendResponseHeaders(200, bytes.length);
         try (OutputStream out = exchange.getResponseBody()) { out.write(bytes); }
+    }
+
+    private void tryFetchIcon(int id, Path target) {
+        try {
+            Files.createDirectories(ADMIN_ICONS_DIR);
+            HttpRequest req = HttpRequest.newBuilder(URI.create(String.format(UPSTREAM_ICON_URL, id)))
+                    .timeout(Duration.ofSeconds(5))
+                    .header("User-Agent", "maplestory-lab-dashboard/1.0")
+                    .GET().build();
+            HttpResponse<byte[]> resp = ICON_HTTP.send(req, HttpResponse.BodyHandlers.ofByteArray());
+            if (resp.statusCode() == 200 && resp.body() != null && resp.body().length > 0) {
+                Files.write(target, resp.body());
+            } else {
+                iconNegative.add(id);
+            }
+        } catch (Exception e) {
+            iconNegative.add(id);
+        }
     }
 
     private void handleItems(HttpExchange exchange) throws IOException {

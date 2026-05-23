@@ -873,10 +873,12 @@
     function renderItemCard(i) {
       const hasStats = i.stats && Object.keys(i.stats).length;
       const klass = 'item-card' + (hasStats ? '' : ' no-stats');
-      // <img onerror> swaps to a text fallback when the icon endpoint returns 404,
-      // so cards without a local icon dump still look clean.
+      // loading="lazy" + decoding="async" mean the browser only requests icons
+      // for cards in (or near) the viewport. Off-screen cards stay placeholder
+      // until you scroll, so opening Items doesn't fire 300 parallel fetches.
+      // onerror swaps to a text fallback when /api/icon returns 404.
       return `<div class="${klass}" title="${escapeHtml(i.name)}" onclick="giveItem(${i.id})">
-        <img class="icon" src="/api/icon/${i.id}.png" alt=""
+        <img class="icon" src="/api/icon/${i.id}.png" alt="" loading="lazy" decoding="async"
              onerror="this.outerHTML='<div class=\\'icon fallback\\'>'+${i.id}.toString().slice(0,4)+'</div>'">
         <div class="iname">${escapeHtml(i.name)}</div>
         ${hasStats ? `<div class="istats">${formatStatsCompact(i.stats)}</div>` : ''}
