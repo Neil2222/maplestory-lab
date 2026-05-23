@@ -166,9 +166,9 @@
             <label class="field">Fame<div class="row compact"><input id="setFame" type="number"><button onclick="setAttr('fame','setFame')">Set</button></div></label>
           </div>
           <div class="row" style="margin-top:10px;">
-            <button class="primary" onclick="if(confirm('Naturalize '+selected+' to natural stats for current level?')) cmd('naturalize')">Naturalize</button>
+            <button class="primary" onclick="if(confirm('Naturalize '+selected+'?\\n\\n• STR/DEX/INT/LUK → 4\\n• Remaining AP → 5L+4\\n• HP/MP → job natural curve\\n• Remaining SP → 3 × (level−9), 0 for Beginner\\n• ALL learned skills wiped (DB row deleted)\\n\\nThis cannot be undone.')) cmd('naturalize')">Naturalize</button>
             <button onclick="if(confirm('Max EVERYTHING on '+selected+'?')) cmd('maxstat')">Max everything</button>
-            <span class="sub" style="color:var(--muted); font-size:12px;"><b>Naturalize</b> resets STR/DEX/INT/LUK to 4, awards (5L+4) AP, and rescales HP/MP to the job's natural curve. <b>Max</b> caps level 255 / stats Short.MAX / HP·MP 30000.</span>
+            <span class="sub" style="color:var(--muted); font-size:12px;"><b>Naturalize</b> resets stats AND wipes all learned skills (so the refunded SP is genuinely fresh). <b>Max</b> caps level 255 / stats Short.MAX / HP·MP 30000.</span>
           </div>
           <datalist id="jobList">
             <option value="0">Beginner</option>

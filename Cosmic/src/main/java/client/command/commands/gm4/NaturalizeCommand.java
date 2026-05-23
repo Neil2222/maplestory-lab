@@ -3,7 +3,11 @@ package client.command.commands.gm4;
 import client.Character;
 import client.Client;
 import client.Job;
+import client.Skill;
 import client.command.Command;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Resets a character to "natural" defaults for its current level + job:
@@ -52,13 +56,32 @@ public class NaturalizeCommand extends Command {
         int newMaxMp = 5 + (level - 1) * mpPerLvl;
         int newRemainingAp = Math.max(0, 5 * level + 4);
 
+        // Wipe learned skills: changeSkillLevel(..., -1, ...) removes from both
+        // memory and the skills table. Snapshot the keyset first to avoid
+        // ConcurrentModificationException while iterating.
+        List<Skill> toWipe = new ArrayList<>(player.getSkills().keySet());
+        for (Skill s : toWipe) {
+            player.changeSkillLevel(s, (byte) -1, 0, -1);
+        }
+
+        // Natural SP for the level: 3 per level after 9 for any non-Beginner branch.
+        // Beginner/Noblesse/Legend gain no SP per level in vanilla v83.
+        // (Evan splits SP across job-tier books — updateRemainingSp here only
+        // touches the current book, so on Evan the earlier tier books are left
+        // untouched. The standard Adventurer/Cygnus/Aran path stores all SP
+        // in book 0 so refilling that one slot is correct.)
+        boolean noBranchSp = job.isA(Job.BEGINNER) || job.isA(Job.NOBLESSE) || job.isA(Job.LEGEND);
+        int newSp = noBranchSp ? 0 : 3 * Math.max(0, level - 9);
+
         player.updateStarterStats(4, 4, 4, 4, newRemainingAp);
+        player.updateRemainingSp(newSp);
         player.updateMaxHp(newMaxHp);
         player.updateMaxMp(newMaxMp);
 
         player.dropMessage(5,
             "Naturalized to level " + level + " " + job.name()
-            + ": STR/DEX/INT/LUK = 4, remaining AP = " + newRemainingAp
-            + ", maxHP = " + newMaxHp + ", maxMP = " + newMaxMp + ".");
+            + ": STR/DEX/INT/LUK = 4, AP = " + newRemainingAp
+            + ", SP = " + newSp + ", HP = " + newMaxHp + ", MP = " + newMaxMp
+            + ", wiped " + toWipe.size() + " skill(s).");
     }
 }
