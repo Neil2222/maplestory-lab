@@ -885,19 +885,23 @@
         <div class="iid">#${i.id}</div>
       </div>`;
     }
-    // Picks the 2 most relevant stats to show in a card. Long stat strings break
-    // the layout, so we keep it tight.
+    // Order matters — we want WATK/MATK first when present, then primary stats,
+    // then defense/HP/MP, then misc. Each non-zero bonus shows; cards grow taller
+    // for items with many stats (Zhelm, scrolled gear) which is fine.
+    const CARD_STAT_ORDER = ['PAD','MAD','STR','DEX','INT','LUK','MHP','MMP','PDD','MDD','ACC','EVA','Speed','Jump'];
+    const CARD_STAT_LABEL = {
+      PAD:'WATK', MAD:'MATK', PDD:'WDEF', MDD:'MDEF', MHP:'HP', MMP:'MP',
+      STR:'STR', DEX:'DEX', INT:'INT', LUK:'LUK',
+      ACC:'ACC', EVA:'EVA', Speed:'SPD', Jump:'JMP'
+    };
     function formatStatsCompact(s) {
       if (!s) return '';
       const parts = [];
       if (s.reqLevel) parts.push(`<span class="req">Lv ${s.reqLevel}</span>`);
-      if (s.PAD)      parts.push(`<span class="bon">WATK ${s.PAD}</span>`);
-      else if (s.MAD) parts.push(`<span class="bon">MATK ${s.MAD}</span>`);
-      else {
-        for (const k of ['STR','DEX','INT','LUK']) {
-          if (s[k]) { parts.push(`<span class="bon">${k}+${s[k]}</span>`); break; }
-        }
+      for (const k of CARD_STAT_ORDER) {
+        if (s[k]) parts.push(`<span class="bon">${CARD_STAT_LABEL[k]}+${s[k]}</span>`);
       }
+      if (s.tuc) parts.push(`<span class="bon">slots ${s.tuc}</span>`);
       return parts.join(' ');
     }
 
