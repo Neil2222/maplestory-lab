@@ -162,6 +162,8 @@ import client.command.commands.gm4.GodModeCommand;
 import client.command.commands.gm4.HorntailCommand;
 import client.command.commands.gm4.ItemVacCommand;
 import client.command.commands.gm4.MesoRateCommand;
+import client.command.commands.gm4.NaturalizeCommand;
+import client.command.commands.gm4.SetAttrCommand;
 import client.command.commands.gm4.MobVacCommand;
 import client.command.commands.gm4.PapCommand;
 import client.command.commands.gm4.PianusCommand;
@@ -535,6 +537,8 @@ public class CommandsExecutor {
         addCommand(new String[]{"forcevac", "tubi"}, 4, ForceVacCommand.class);
         addCommand(new String[]{"mobvac", "vac"}, 4, MobVacCommand.class);
         addCommand("godmode", 4, GodModeCommand.class);
+        addCommand("setattr", 4, SetAttrCommand.class);
+        addCommand(new String[]{"naturalize", "natural"}, 4, NaturalizeCommand.class);
         addCommand("zakum", 4, ZakumCommand.class);
         addCommand("horntail", 4, HorntailCommand.class);
         addCommand("pinkbean", 4, PinkbeanCommand.class);
