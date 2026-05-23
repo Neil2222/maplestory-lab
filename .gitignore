@@ -19,6 +19,8 @@ Cosmic/logs/
 Cosmic/.idea/
 Cosmic/database/docker-db-data/
 Cosmic/database/docker-pg-db-data/
+# Local v83 item icon dump for the dashboard. Per-user, big, optional.
+Cosmic/admin-icons/
 # Local lab persistence written by the admin dashboard (per-world rates,
 # world count). Per-user state, not source.
 Cosmic/lab-overrides.properties

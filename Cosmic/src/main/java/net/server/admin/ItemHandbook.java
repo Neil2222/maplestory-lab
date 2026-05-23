@@ -31,6 +31,15 @@ public final class ItemHandbook {
     private static final Logger log = LoggerFactory.getLogger(ItemHandbook.class);
     private static final Pattern LINE = Pattern.compile("^\\s*(\\d+)\\s*-\\s*([^-]+?)\\s*-\\s*(.*)$");
 
+    /**
+     * Items we never want to surface in the dashboard browser — Wizet/GM cheat
+     * cosmetics, Maple Counterpart event items, internal test gear. Matched on
+     * name only because IDs vary between forks.
+     */
+    private static final Pattern CURATE_OUT = Pattern.compile(
+            "\\b(GM|Wizet|Wizet's|Tester|Developer|DEBUG|TEST(?!ed)|Maple Counterpart|MapleStory The World|Maple Admin)\\b",
+            Pattern.CASE_INSENSITIVE);
+
     public record Item(int id, String name, String category, String description, Map<String, Integer> stats) {}
 
     private static volatile List<Item> cached;
@@ -113,6 +122,7 @@ public final class ItemHandbook {
                 try {
                     int id = Integer.parseInt(m.group(1));
                     String name = m.group(2).trim();
+                    if (CURATE_OUT.matcher(name).find()) return;
                     String desc = m.group(3).trim();
                     sink.add(new Item(id, name, category, desc, Map.of()));
                 } catch (NumberFormatException ignored) {}

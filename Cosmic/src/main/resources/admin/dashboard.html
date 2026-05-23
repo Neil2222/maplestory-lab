@@ -88,22 +88,23 @@
     .char.open .char-body { display:block; }
     .char-stats { margin:6px 0 10px; font-size:12px; }
     .char-grid { display:grid; gap:8px; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
-    .items-list { max-height:560px; overflow:auto; border:1px solid var(--line); border-radius:6px; background:#13100d; }
-    .item-row { display:grid; grid-template-columns: 80px 1.4fr 1fr 120px auto; gap:10px; padding:6px 12px; border-bottom:1px solid #20180f; align-items:center; cursor:pointer; }
-    .item-row:hover { background:var(--panel-2); }
-    .item-row:last-child { border-bottom:0; }
-    .item-row .iid { font:12px ui-monospace, Consolas, monospace; color:var(--muted); }
-    .item-row .iname { color:var(--ink); }
-    .item-row .icat { color:var(--muted); font-size:12px; }
-    .item-row .istats { font:12px ui-monospace, Consolas, monospace; color:#c8b48a; }
-    .item-row .istats .req { color:#d49a3a; }
-    .item-row .istats .bon { color:#7fb98c; }
-    .item-row .istats .sep { color:var(--muted); }
-    .item-row .igive { background:transparent; border:1px solid var(--accent-2); color:var(--accent); padding:3px 10px; border-radius:4px; font-size:12px; cursor:pointer; }
-    .item-row .igive:hover { background:var(--accent-2); color:#fff; }
-    .rec-group { border-bottom:1px solid #2a200f; }
-    .rec-group:last-child { border-bottom:0; }
-    .rec-slot { background:#3a2f1a; color:var(--accent); padding:6px 12px; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
+    .items-list { max-height:640px; overflow:auto; border:1px solid var(--line); border-radius:6px; background:#13100d; padding:10px; }
+    .items-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap:8px; }
+    .item-card { background:var(--panel-2); border:1px solid var(--line); border-radius:6px; padding:8px 8px 6px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px; transition:border-color .12s, background .12s; text-align:center; min-height:100px; }
+    .item-card:hover { background:#3a2f25; border-color:var(--accent); }
+    .item-card .icon { width:42px; height:42px; image-rendering:pixelated; background:#0d0a07; border:1px solid #2a200f; border-radius:4px; object-fit:contain; }
+    .item-card .icon.fallback { display:flex; align-items:center; justify-content:center; color:var(--muted); font:11px ui-monospace, Consolas, monospace; }
+    .item-card .iname { font-size:12px; line-height:1.25; color:var(--ink); word-break:break-word; min-height:30px; }
+    .item-card .iid { font:10.5px ui-monospace, Consolas, monospace; color:var(--muted); }
+    .item-card .istats { font:11px ui-monospace, Consolas, monospace; line-height:1.4; }
+    .item-card .istats .req { color:#d49a3a; }
+    .item-card .istats .bon { color:#7fb98c; }
+    .rec-group { margin-bottom:16px; }
+    .rec-group:last-child { margin-bottom:0; }
+    .rec-slot { color:var(--accent); padding:0 0 6px; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid #2a200f; margin-bottom:8px; }
+    /* Compact mode for items that have no stats (use/etc/setup/cash/pet) */
+    .item-card.no-stats { min-height:auto; }
+    .item-card.no-stats .iname { min-height:auto; }
     .char-workspace { display:grid; grid-template-columns: 320px 1fr; gap:14px; }
     @media (max-width: 1100px) { .char-workspace { grid-template-columns: 1fr; } }
     .sidebar { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; align-self:start; position:sticky; top:14px; }
@@ -263,6 +264,10 @@
               <label class="field" style="flex:0 0 130px;">Min WATK<input id="itemMinWatk" type="number" placeholder="any" oninput="renderItems()"></label>
               <label class="field" style="flex:0 0 130px;">Min MATK<input id="itemMinMatk" type="number" placeholder="any" oninput="renderItems()"></label>
               <button onclick="document.getElementById('itemMaxLv').value=''; document.getElementById('itemMinWatk').value=''; document.getElementById('itemMinMatk').value=''; renderItems();" style="align-self:end;">Clear</button>
+              <label class="field" style="flex-direction:row; align-items:center; gap:6px;">
+                <input type="checkbox" id="itemCosmetics" onchange="renderItems()">
+                <span>Show cosmetics (Skin/Hair/Face)</span>
+              </label>
               <label class="field" style="margin-left:auto; flex-direction:row; align-items:center; gap:6px;">
                 <input type="checkbox" id="itemRecommended" onchange="renderItems()">
                 <span>Recommended for selected character (top 5 per slot)</span>
@@ -822,11 +827,14 @@
         list.innerHTML = '<div class="empty">Failed to load: ' + e.message + '</div>';
       }
     }
+    // Cosmetic equip slots — char creation only, hidden behind the 'Show cosmetics' toggle.
+    const COSMETIC_CATS = new Set(['Equip/Skin', 'Equip/Hair', 'Equip/Face']);
+
     function renderItems() {
       if (!itemsCache) return;
       const t = document.getElementById('itemTarget');
       if (selected) { t.textContent = selected; t.classList.remove('none'); }
-      else { t.textContent = '(no player selected)'; t.classList.add('none'); }
+      else { t.textContent = '(no character selected)'; t.classList.add('none'); }
 
       const recommended = document.getElementById('itemRecommended').checked;
       if (recommended) {
@@ -839,7 +847,10 @@
       const maxLv = Number(document.getElementById('itemMaxLv').value || 0);
       const minWatk = Number(document.getElementById('itemMinWatk').value || 0);
       const minMatk = Number(document.getElementById('itemMinMatk').value || 0);
+      const showCosmetics = document.getElementById('itemCosmetics').checked;
+
       let filtered = itemsCache;
+      if (!showCosmetics && !cat) filtered = filtered.filter(i => !COSMETIC_CATS.has(i.cat));
       if (cat) filtered = filtered.filter(i => i.cat === cat);
       if (q) {
         if (/^\d+$/.test(q)) filtered = filtered.filter(i => String(i.id).startsWith(q));
@@ -854,19 +865,38 @@
       const list = document.getElementById('itemsList');
       if (!shown.length) { list.innerHTML = '<div class="empty">No matches.</div>'; }
       else {
-        list.innerHTML = shown.map(renderItemRow).join('');
+        list.innerHTML = `<div class="items-grid">${shown.map(renderItemCard).join('')}</div>`;
       }
       document.getElementById('itemsCount').textContent =
         total === shown.length ? `Showing all ${total} matches` : `Showing first ${shown.length} of ${total} matches — narrow your search to see more`;
     }
-    function renderItemRow(i) {
-      return `<div class="item-row" onclick="giveItem(${i.id})">
-        <span class="iid">${i.id}</span>
-        <span class="iname">${escapeHtml(i.name)}</span>
-        <span class="istats">${formatStats(i.stats)}</span>
-        <span class="icat">${escapeHtml(i.cat)}</span>
-        <button class="igive" onclick="event.stopPropagation(); giveItem(${i.id})">Give</button>
+    function renderItemCard(i) {
+      const hasStats = i.stats && Object.keys(i.stats).length;
+      const klass = 'item-card' + (hasStats ? '' : ' no-stats');
+      // <img onerror> swaps to a text fallback when the icon endpoint returns 404,
+      // so cards without a local icon dump still look clean.
+      return `<div class="${klass}" title="${escapeHtml(i.name)}" onclick="giveItem(${i.id})">
+        <img class="icon" src="/api/icon/${i.id}.png" alt=""
+             onerror="this.outerHTML='<div class=\\'icon fallback\\'>'+${i.id}.toString().slice(0,4)+'</div>'">
+        <div class="iname">${escapeHtml(i.name)}</div>
+        ${hasStats ? `<div class="istats">${formatStatsCompact(i.stats)}</div>` : ''}
+        <div class="iid">#${i.id}</div>
       </div>`;
+    }
+    // Picks the 2 most relevant stats to show in a card. Long stat strings break
+    // the layout, so we keep it tight.
+    function formatStatsCompact(s) {
+      if (!s) return '';
+      const parts = [];
+      if (s.reqLevel) parts.push(`<span class="req">Lv ${s.reqLevel}</span>`);
+      if (s.PAD)      parts.push(`<span class="bon">WATK ${s.PAD}</span>`);
+      else if (s.MAD) parts.push(`<span class="bon">MATK ${s.MAD}</span>`);
+      else {
+        for (const k of ['STR','DEX','INT','LUK']) {
+          if (s[k]) { parts.push(`<span class="bon">${k}+${s[k]}</span>`); break; }
+        }
+      }
+      return parts.join(' ');
     }
 
     // Slots the recommended view groups by, in display order. Cosmetic-only slots
@@ -941,7 +971,7 @@
         totalEligible += candidates.length;
         groups.push(`<div class="rec-group">
           <div class="rec-slot">${escapeHtml(slot.replace('Equip/', ''))}</div>
-          ${candidates.map(renderItemRow).join('')}
+          <div class="items-grid">${candidates.map(renderItemCard).join('')}</div>
         </div>`);
       }
       list.innerHTML = groups.length

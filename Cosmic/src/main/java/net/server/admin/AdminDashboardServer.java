@@ -52,6 +52,7 @@ public class AdminDashboardServer {
         server.createContext("/api/commands", this::handleCommands);
         server.createContext("/api/accounts", this::handleAccounts);
         server.createContext("/api/items", this::handleItems);
+        server.createContext("/api/icon/", this::handleIcon);
         server.createContext("/trainer", this::handleTrainerPage);
         server.createContext("/api/trainer/state", this::handleTrainerState);
         server.createContext("/api/trainer/toggle", this::handleTrainerToggle);
@@ -220,6 +221,37 @@ public class AdminDashboardServer {
         } catch (IllegalArgumentException ex) {
             sendJson(exchange, 400, "{\"ok\":false,\"message\":\"Unknown cheat: " + json(cheatName) + "\"}");
         }
+    }
+
+    private static final Path ADMIN_ICONS_DIR = Path.of("admin-icons");
+
+    /**
+     * Serves icon PNGs from the local <code>admin-icons/</code> folder next to
+     * config.yaml. Drop a v83 icon dump in there (filenames "{itemId}.png") and
+     * cards in the dashboard light up. Missing files return 404 so the UI can
+     * fall back to a placeholder without breaking.
+     */
+    private void handleIcon(HttpExchange exchange) throws IOException {
+        String path = exchange.getRequestURI().getPath();
+        String last = path.substring(path.lastIndexOf('/') + 1);
+        if (last.endsWith(".png")) last = last.substring(0, last.length() - 4);
+        int id;
+        try { id = Integer.parseInt(last); }
+        catch (NumberFormatException e) { send(exchange, 400, "text/plain", "bad id"); return; }
+
+        Path file = ADMIN_ICONS_DIR.resolve(id + ".png");
+        if (!Files.exists(file)) {
+            // 404 is the signal to the client to use the placeholder, not an error.
+            exchange.getResponseHeaders().set("Cache-Control", "no-store");
+            exchange.sendResponseHeaders(404, -1);
+            exchange.close();
+            return;
+        }
+        byte[] bytes = Files.readAllBytes(file);
+        exchange.getResponseHeaders().set("Content-Type", "image/png");
+        exchange.getResponseHeaders().set("Cache-Control", "public, max-age=86400");
+        exchange.sendResponseHeaders(200, bytes.length);
+        try (OutputStream out = exchange.getResponseBody()) { out.write(bytes); }
     }
 
     private void handleItems(HttpExchange exchange) throws IOException {
