@@ -1,0 +1,53 @@
+# --- Secrets & local env ---
+.env
+.env.*
+!.env.example
+
+# --- Build / runtime / logs ---
+logs/
+*.log
+target/
+build/
+out/
+dist/
+node_modules/
+
+# --- Cosmic server: track source, ignore data/build/IDE ---
+Cosmic/wz/
+Cosmic/target/
+Cosmic/logs/
+Cosmic/.idea/
+Cosmic/database/docker-db-data/
+Cosmic/database/docker-pg-db-data/
+
+# --- Sub-projects we do NOT publish (copyrighted client material) ---
+client-cosmic/
+client-kuro/
+# Empty placeholder, ignore for now.
+maplestory-wasm/
+
+# --- Local server data (MUST never be published) ---
+mysql-data/
+database/
+*.sql
+*.dump
+*.bak
+
+# --- Copyrighted / sensitive binaries (defense in depth) ---
+*.wz
+*.img
+*.exe
+*.dll
+*.lib
+*.exp
+*.acm
+*.reg
+
+# --- OS / editor noise ---
+Thumbs.db
+desktop.ini
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
