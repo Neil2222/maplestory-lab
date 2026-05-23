@@ -5,6 +5,7 @@ import client.command.CommandsExecutor;
 import client.inventory.manipulator.InventoryManipulator;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import constants.game.GameConstants;
 import net.server.Server;
 import net.server.channel.Channel;
 import net.server.world.World;
@@ -85,8 +86,13 @@ public class AdminDashboardServer {
         List<String> worldEntries = new ArrayList<>();
         for (World world : Server.getInstance().getWorlds()) {
             List<Channel> channels = world.getChannels();
+            int id = world.getId();
+            String name = (id >= 0 && id < GameConstants.WORLD_NAMES.length) ? GameConstants.WORLD_NAMES[id] : ("World " + id);
             worldEntries.add("{"
-                    + "\"id\":" + world.getId() + ","
+                    + "\"id\":" + id + ","
+                    + "\"name\":\"" + json(name) + "\","
+                    + "\"flag\":" + world.getFlag() + ","
+                    + "\"eventMessage\":\"" + json(world.getEventMessage()) + "\","
                     + "\"channels\":" + channels.size() + ","
                     + "\"players\":" + world.getPlayerStorage().getAllCharacters().size() + ","
                     + "\"expRate\":" + world.getExpRate() + ","
@@ -218,12 +224,36 @@ public class AdminDashboardServer {
                     int exp = Integer.parseInt(body.getOrDefault("exp", "0"));
                     int drop = Integer.parseInt(body.getOrDefault("drop", "0"));
                     int meso = Integer.parseInt(body.getOrDefault("meso", "0"));
-                    for (World world : Server.getInstance().getWorlds()) {
+                    // Optional worldId — if omitted/empty, apply to all worlds (legacy behaviour).
+                    String worldIdStr = body.getOrDefault("worldId", "").trim();
+                    List<World> targets;
+                    if (worldIdStr.isEmpty()) {
+                        targets = Server.getInstance().getWorlds();
+                    } else {
+                        int wid = Integer.parseInt(worldIdStr);
+                        World w = Server.getInstance().getWorld(wid);
+                        if (w == null) {
+                            throw new IllegalArgumentException("World " + wid + " does not exist.");
+                        }
+                        targets = List.of(w);
+                    }
+                    for (World world : targets) {
                         if (exp > 0) world.setExpRate(exp);
                         if (drop > 0) world.setDropRate(drop);
                         if (meso > 0) world.setMesoRate(meso);
                     }
-                    sendOk(exchange, "Rates updated.");
+                    String scope = worldIdStr.isEmpty() ? "all worlds" : ("world " + worldIdStr);
+                    sendOk(exchange, "Rates updated for " + scope + ".");
+                }
+                case "setFlag" -> {
+                    int wid = Integer.parseInt(body.getOrDefault("worldId", "-1"));
+                    int flag = Integer.parseInt(body.getOrDefault("flag", "0"));
+                    World w = Server.getInstance().getWorld(wid);
+                    if (w == null) {
+                        throw new IllegalArgumentException("World " + wid + " does not exist.");
+                    }
+                    w.setFlag((byte) flag);
+                    sendOk(exchange, "World " + wid + " flag set to " + flag + " (Event/New/Hot icon).");
                 }
                 case "notice" -> {
                     String message = body.getOrDefault("message", "").trim();

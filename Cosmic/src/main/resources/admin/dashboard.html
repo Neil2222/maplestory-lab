@@ -73,6 +73,9 @@
     .stats-grid { grid-template-columns:1fr 1fr; }
     .stats-grid .row.compact input { flex:1; min-width:0; }
     .stats-grid .row.compact button { flex:0 0 auto; }
+    .world-card { background:var(--panel-2); border:1px solid var(--line); border-radius:6px; padding:12px 14px; margin-bottom:10px; }
+    .world-head h3 { margin:0 0 8px; font-size:14px; font-weight:600; }
+    .world-grid { display:grid; gap:8px; grid-template-columns: 1fr 1fr 1fr auto; align-items:end; }
   </style>
 </head>
 <body>
@@ -184,14 +187,14 @@
     <!-- WORLD TAB -->
     <section data-panel="world" class="hidden">
       <div class="panel">
-        <h2>World rates <span class="sub">runtime, no restart</span></h2>
+        <h2>Apply rates to all worlds <span class="sub">one-shot quick action</span></h2>
         <div class="grid three">
           <label class="field">EXP rate<input id="exprate" type="number" value="1" min="1"></label>
           <label class="field">Drop rate<input id="droprate" type="number" value="1" min="1"></label>
           <label class="field">Meso rate<input id="mesorate" type="number" value="1" min="1"></label>
         </div>
         <div style="margin-top:10px;">
-          <button class="primary" onclick="post({action:'rates',exp:num('exprate'),drop:num('droprate'),meso:num('mesorate')})">Apply rates</button>
+          <button class="primary" onclick="post({action:'rates',exp:num('exprate'),drop:num('droprate'),meso:num('mesorate')})">Apply to all</button>
         </div>
       </div>
 
@@ -204,11 +207,8 @@
       </div>
 
       <div class="panel">
-        <h2>Worlds</h2>
-        <table>
-          <thead><tr><th>ID</th><th>Channels</th><th>Players</th><th>EXP</th><th>Drop</th><th>Meso</th></tr></thead>
-          <tbody id="worldsTable"><tr><td colspan="6" class="empty">…</td></tr></tbody>
-        </table>
+        <h2>Worlds <span class="sub">per-world rates &amp; flag. Names come from the client and can't be changed server-side.</span></h2>
+        <div id="worldsList"><div class="empty">…</div></div>
       </div>
     </section>
 
@@ -413,9 +413,31 @@
       else { el.textContent = 'no player selected'; el.classList.add('none'); }
     }
     function renderWorlds(worlds) {
-      const body = document.getElementById('worldsTable');
-      if (!worlds.length) { body.innerHTML = '<tr><td colspan="6" class="empty">No worlds</td></tr>'; return; }
-      body.innerHTML = worlds.map(w => `<tr><td>${w.id}</td><td>${w.channels}</td><td>${w.players}</td><td>x${w.expRate}</td><td>x${w.dropRate}</td><td>x${w.mesoRate}</td></tr>`).join('');
+      const list = document.getElementById('worldsList');
+      if (!worlds.length) { list.innerHTML = '<div class="empty">No worlds</div>'; return; }
+      list.innerHTML = worlds.map(w => `
+        <div class="world-card">
+          <div class="world-head">
+            <h3>${w.name} <span class="sub">world ${w.id} · ${w.channels} ch · ${w.players} online</span></h3>
+          </div>
+          <div class="world-grid">
+            <label class="field">EXP<input id="wexp_${w.id}" type="number" value="${w.expRate}" min="1"></label>
+            <label class="field">Drop<input id="wdrop_${w.id}" type="number" value="${w.dropRate}" min="1"></label>
+            <label class="field">Meso<input id="wmeso_${w.id}" type="number" value="${w.mesoRate}" min="1"></label>
+            <div style="align-self:end;"><button class="primary" onclick="setRate(${w.id})">Apply rates</button></div>
+          </div>
+          <div class="world-grid" style="margin-top:8px;">
+            <label class="field">Flag <span class="sub">0=none, 1=Event, 2=New, 3=Hot</span><input id="wflag_${w.id}" type="number" value="${w.flag}" min="0" max="5"></label>
+            <div style="align-self:end;"><button onclick="setFlag(${w.id})">Set flag</button></div>
+          </div>
+          ${w.eventMessage ? `<div class="sub" style="margin-top:8px;">Event message: <code>${escapeHtml(w.eventMessage)}</code></div>` : ''}
+        </div>`).join('');
+    }
+    function setRate(wid) {
+      post({ action:'rates', worldId: wid, exp: num('wexp_'+wid), drop: num('wdrop_'+wid), meso: num('wmeso_'+wid) });
+    }
+    function setFlag(wid) {
+      post({ action:'setFlag', worldId: wid, flag: num('wflag_'+wid) });
     }
     function renderServer(status) {
       document.getElementById('sMemUsed').textContent = status.memoryUsedMb + ' / ' + status.memoryMaxMb + ' MB';
