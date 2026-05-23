@@ -101,6 +101,9 @@
     .item-row .istats .sep { color:var(--muted); }
     .item-row .igive { background:transparent; border:1px solid var(--accent-2); color:var(--accent); padding:3px 10px; border-radius:4px; font-size:12px; cursor:pointer; }
     .item-row .igive:hover { background:var(--accent-2); color:#fff; }
+    .rec-group { border-bottom:1px solid #2a200f; }
+    .rec-group:last-child { border-bottom:0; }
+    .rec-slot { background:#3a2f1a; color:var(--accent); padding:6px 12px; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
   </style>
 </head>
 <body>
@@ -238,6 +241,10 @@
           <label class="field" style="flex:0 0 130px;">Min WATK<input id="itemMinWatk" type="number" placeholder="any" oninput="renderItems()"></label>
           <label class="field" style="flex:0 0 130px;">Min MATK<input id="itemMinMatk" type="number" placeholder="any" oninput="renderItems()"></label>
           <button onclick="document.getElementById('itemMaxLv').value=''; document.getElementById('itemMinWatk').value=''; document.getElementById('itemMinMatk').value=''; renderItems();" style="align-self:end;">Clear</button>
+          <label class="field" style="margin-left:auto; flex-direction:row; align-items:center; gap:6px;">
+            <input type="checkbox" id="itemRecommended" onchange="renderItems()">
+            <span>Recommended for selected player (top 5 per slot)</span>
+          </label>
         </div>
         <div class="sub" style="margin-bottom:6px;">
           Click an item to give it to the selected player <b id="itemTarget" class="selectedName none">(no player selected)</b>. Source: <code>Cosmic/handbook/</code> — same IDs the server accepts.
@@ -368,6 +375,7 @@
   <script>
     // --- state ---
     let selected = null;
+    let selectedPlayerInfo = null;  // full player record from /api/players for the selected name
     const fmt = new Intl.NumberFormat();
     const num = id => Number(document.getElementById(id).value || 0);
 
@@ -457,16 +465,17 @@
     function renderPlayers(list) {
       document.getElementById('playerCount').textContent = list.length ? '(' + list.length + ')' : '';
       const body = document.getElementById('players');
-      if (!list.length) { body.innerHTML = '<tr><td colspan="8" class="empty">No players online</td></tr>'; return; }
+      if (!list.length) { body.innerHTML = '<tr><td colspan="8" class="empty">No players online</td></tr>'; selectedPlayerInfo = null; return; }
       body.innerHTML = '';
       let selectedPlayer = null;
       for (const p of list) {
         const tr = document.createElement('tr');
         if (p.name === selected) { tr.className = 'selected'; selectedPlayer = p; }
         tr.innerHTML = `<td>${p.name}</td><td>${p.account}</td><td>${p.job}</td><td>${p.level}</td><td>${p.map}</td><td>${fmt.format(p.meso)}</td><td>${fmt.format(p.nx)}</td><td>${p.godmode ? 'on':'off'}</td>`;
-        tr.onclick = () => { selected = p.name; renderSelected(); renderPlayers(list); };
+        tr.onclick = () => { selected = p.name; renderSelected(); renderPlayers(list); if (itemsCache) renderItems(); };
         body.appendChild(tr);
       }
+      selectedPlayerInfo = selectedPlayer;
       renderStatsPanel(selectedPlayer);
     }
 
@@ -700,6 +709,16 @@
     }
     function renderItems() {
       if (!itemsCache) return;
+      const t = document.getElementById('itemTarget');
+      if (selected) { t.textContent = selected; t.classList.remove('none'); }
+      else { t.textContent = '(no player selected)'; t.classList.add('none'); }
+
+      const recommended = document.getElementById('itemRecommended').checked;
+      if (recommended) {
+        renderRecommended();
+        return;
+      }
+
       const q = (document.getElementById('itemSearch').value || '').toLowerCase().trim();
       const cat = document.getElementById('itemCat').value;
       const maxLv = Number(document.getElementById('itemMaxLv').value || 0);
@@ -720,20 +739,100 @@
       const list = document.getElementById('itemsList');
       if (!shown.length) { list.innerHTML = '<div class="empty">No matches.</div>'; }
       else {
-        list.innerHTML = shown.map(i =>
-          `<div class="item-row" onclick="giveItem(${i.id})">
-             <span class="iid">${i.id}</span>
-             <span class="iname">${escapeHtml(i.name)}</span>
-             <span class="istats">${formatStats(i.stats)}</span>
-             <span class="icat">${escapeHtml(i.cat)}</span>
-             <button class="igive" onclick="event.stopPropagation(); giveItem(${i.id})">Give</button>
-           </div>`).join('');
+        list.innerHTML = shown.map(renderItemRow).join('');
       }
       document.getElementById('itemsCount').textContent =
         total === shown.length ? `Showing all ${total} matches` : `Showing first ${shown.length} of ${total} matches — narrow your search to see more`;
-      const t = document.getElementById('itemTarget');
-      if (selected) { t.textContent = selected; t.classList.remove('none'); }
-      else { t.textContent = '(no player selected)'; t.classList.add('none'); }
+    }
+    function renderItemRow(i) {
+      return `<div class="item-row" onclick="giveItem(${i.id})">
+        <span class="iid">${i.id}</span>
+        <span class="iname">${escapeHtml(i.name)}</span>
+        <span class="istats">${formatStats(i.stats)}</span>
+        <span class="icat">${escapeHtml(i.cat)}</span>
+        <button class="igive" onclick="event.stopPropagation(); giveItem(${i.id})">Give</button>
+      </div>`;
+    }
+
+    // Slots the recommended view groups by, in display order. Cosmetic-only slots
+    // (Face/Hair/Skin) and pet gear are skipped because they're not stat upgrades.
+    const RECOMMENDED_SLOTS = ['Equip/Weapon','Equip/Shield','Equip/Cap','Equip/Coat','Equip/Longcoat','Equip/Pants','Equip/Shoes','Equip/Glove','Equip/Cape','Equip/Accessory','Equip/Ring'];
+
+    // MapleStory v83 reqJob bitmask:
+    //   1 = Warrior, 2 = Magician, 4 = Bowman, 8 = Thief, 16 = Pirate. 0 = any.
+    // Cygnus and Aran/Evan reuse the adventurer flags for shared gear.
+    function jobFlagFor(jobId) {
+      if (jobId === 0) return 0;
+      if (jobId >= 2100 && jobId < 2200) return 1;   // Aran -> warrior gear
+      if (jobId >= 2200 && jobId < 2300) return 2;   // Evan -> magician gear
+      if (jobId >= 1100 && jobId < 1200) return 1;   // DawnWarrior
+      if (jobId >= 1200 && jobId < 1300) return 2;   // BlazeWizard
+      if (jobId >= 1300 && jobId < 1400) return 4;   // WindArcher
+      if (jobId >= 1400 && jobId < 1500) return 8;   // NightWalker
+      if (jobId >= 1500 && jobId < 1600) return 16;  // ThunderBreaker
+      const branch = Math.floor(jobId / 100);
+      if (branch === 1) return 1;
+      if (branch === 2) return 2;
+      if (branch === 3) return 4;
+      if (branch === 4) return 8;
+      if (branch === 5) return 16;
+      return 0;
+    }
+    function canEquip(item, p) {
+      if (!item.stats) return false;
+      const s = item.stats;
+      if ((s.reqLevel || 0) > p.level) return false;
+      if ((s.reqSTR || 0) > p.str)     return false;
+      if ((s.reqDEX || 0) > p.dex)     return false;
+      if ((s.reqINT || 0) > p.int)     return false;
+      if ((s.reqLUK || 0) > p.luk)     return false;
+      const reqJob = s.reqJob || 0;
+      if (reqJob > 0) {
+        const flag = jobFlagFor(p.jobId);
+        if ((reqJob & flag) === 0) return false;
+      }
+      return true;
+    }
+    // "How good" — primary key is reqLevel (higher = better tier), tiebreaker is
+    // the sum of all positive stat boosts. For a magician, MAD weighs more than PAD;
+    // for melee jobs the reverse. Cheap heuristic, not exact theory-crafting.
+    function scoreFor(item, p) {
+      const s = item.stats || {};
+      const isMagician = jobFlagFor(p.jobId) === 2;
+      const attack = isMagician ? (s.MAD || 0) * 3 : (s.PAD || 0) * 3;
+      const stats = (s.STR||0)+(s.DEX||0)+(s.INT||0)+(s.LUK||0);
+      const hpmp = ((s.MHP||0)+(s.MMP||0)) / 10;
+      const def = ((s.PDD||0)+(s.MDD||0)) / 2;
+      const slots = (s.tuc || 0) * 4;
+      return (s.reqLevel || 0) * 100 + attack + stats + hpmp + def + slots;
+    }
+    function renderRecommended() {
+      const list = document.getElementById('itemsList');
+      const count = document.getElementById('itemsCount');
+      if (!selectedPlayerInfo) {
+        list.innerHTML = '<div class="empty">Select an online player on the Players tab first — recommendations use their level, job and stats.</div>';
+        count.textContent = '';
+        return;
+      }
+      const p = selectedPlayerInfo;
+      const groups = [];
+      let totalEligible = 0;
+      for (const slot of RECOMMENDED_SLOTS) {
+        const candidates = itemsCache
+          .filter(i => i.cat === slot && canEquip(i, p))
+          .sort((a, b) => scoreFor(b, p) - scoreFor(a, p))
+          .slice(0, 5);
+        if (!candidates.length) continue;
+        totalEligible += candidates.length;
+        groups.push(`<div class="rec-group">
+          <div class="rec-slot">${escapeHtml(slot.replace('Equip/', ''))}</div>
+          ${candidates.map(renderItemRow).join('')}
+        </div>`);
+      }
+      list.innerHTML = groups.length
+        ? groups.join('')
+        : `<div class="empty">No equippable gear found for ${escapeHtml(p.name)} (Lv ${p.level}, job ${p.jobId}). Their stats may be too low for available gear.</div>`;
+      count.textContent = `${totalEligible} eligible items across ${groups.length} slot${groups.length===1?'':'s'} for ${p.name} (Lv ${p.level} ${p.job}, STR ${p.str} DEX ${p.dex} INT ${p.int} LUK ${p.luk})`;
     }
 
     // Maps stat keys to human-friendly labels. "inc" prefix was stripped server-side.
