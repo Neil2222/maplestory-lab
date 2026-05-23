@@ -1,6 +1,7 @@
 package net.server.admin;
 
 import client.Character;
+import client.Client;
 import client.command.CommandsExecutor;
 import client.inventory.manipulator.InventoryManipulator;
 import com.sun.net.httpserver.HttpExchange;
@@ -10,6 +11,12 @@ import net.server.Server;
 import net.server.channel.Channel;
 import net.server.world.World;
 import server.CashShop;
+import tools.DatabaseConnection;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -42,6 +49,7 @@ public class AdminDashboardServer {
         server.createContext("/api/action", this::handleAction);
         server.createContext("/api/logs", this::handleLogs);
         server.createContext("/api/commands", this::handleCommands);
+        server.createContext("/api/accounts", this::handleAccounts);
         server.setExecutor(Executors.newSingleThreadExecutor(r -> {
             Thread thread = new Thread(r, "AdminDashboard");
             thread.setDaemon(true);
@@ -123,6 +131,120 @@ public class AdminDashboardServer {
                     + "}");
         }
         sendJson(exchange, 200, "[" + String.join(",", rows) + "]");
+    }
+
+    private void handleAccounts(HttpExchange exchange) throws IOException {
+        // Two queries: all accounts, then all characters joined. Bind together in-memory.
+        Map<Integer, List<String>> charactersByAccount = new LinkedHashMap<>();
+        Map<Integer, Map<String, Object>> accounts = new LinkedHashMap<>();
+
+        try (Connection con = DatabaseConnection.getConnection()) {
+            try (PreparedStatement ps = con.prepareStatement(
+                    "SELECT id, name, loggedin, banned, characterslots, lastlogin FROM accounts ORDER BY id");
+                 ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> a = new LinkedHashMap<>();
+                    int id = rs.getInt("id");
+                    a.put("id", id);
+                    a.put("name", rs.getString("name"));
+                    a.put("loggedin", rs.getInt("loggedin"));
+                    a.put("banned", rs.getInt("banned"));
+                    a.put("slots", rs.getInt("characterslots"));
+                    java.sql.Timestamp ll = rs.getTimestamp("lastlogin");
+                    a.put("lastlogin", ll == null ? 0L : ll.getTime());
+                    accounts.put(id, a);
+                    charactersByAccount.put(id, new ArrayList<>());
+                }
+            }
+            try (PreparedStatement ps = con.prepareStatement(
+                    "SELECT id, accountid, world, name, level, exp, str, dex, `int`, luk, maxhp, maxmp, meso, job, fame, ap, gm, map FROM characters ORDER BY accountid, id");
+                 ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    int accId = rs.getInt("accountid");
+                    List<String> bucket = charactersByAccount.get(accId);
+                    if (bucket == null) continue;
+                    int charId = rs.getInt("id");
+                    String name = rs.getString("name");
+                    bucket.add("{"
+                            + "\"id\":" + charId + ","
+                            + "\"name\":\"" + json(name) + "\","
+                            + "\"world\":" + rs.getInt("world") + ","
+                            + "\"level\":" + rs.getInt("level") + ","
+                            + "\"job\":" + rs.getInt("job") + ","
+                            + "\"exp\":" + rs.getInt("exp") + ","
+                            + "\"str\":" + rs.getInt("str") + ","
+                            + "\"dex\":" + rs.getInt("dex") + ","
+                            + "\"int\":" + rs.getInt("int") + ","
+                            + "\"luk\":" + rs.getInt("luk") + ","
+                            + "\"maxhp\":" + rs.getInt("maxhp") + ","
+                            + "\"maxmp\":" + rs.getInt("maxmp") + ","
+                            + "\"meso\":" + rs.getInt("meso") + ","
+                            + "\"fame\":" + rs.getInt("fame") + ","
+                            + "\"ap\":" + rs.getInt("ap") + ","
+                            + "\"gm\":" + rs.getInt("gm") + ","
+                            + "\"map\":" + rs.getInt("map") + ","
+                            + "\"online\":" + (findOnlineByName(name) != null)
+                            + "}");
+                }
+            }
+        } catch (SQLException e) {
+            sendJson(exchange, 500, "{\"error\":\"" + json(e.getMessage()) + "\"}");
+            return;
+        }
+
+        List<String> rows = new ArrayList<>();
+        for (Map.Entry<Integer, Map<String, Object>> e : accounts.entrySet()) {
+            Map<String, Object> a = e.getValue();
+            List<String> chars = charactersByAccount.getOrDefault(e.getKey(), List.of());
+            // Account-level GM in this fork is derived from the highest GM level among
+            // the account's characters — accounts table has no gm column.
+            int maxGm = 0;
+            for (String charJson : chars) {
+                int idx = charJson.indexOf("\"gm\":");
+                if (idx >= 0) {
+                    int comma = charJson.indexOf(',', idx);
+                    int end = comma == -1 ? charJson.length() - 1 : comma;
+                    try { maxGm = Math.max(maxGm, Integer.parseInt(charJson.substring(idx + 5, end).trim())); } catch (NumberFormatException ignored) {}
+                }
+            }
+            rows.add("{"
+                    + "\"id\":" + a.get("id") + ","
+                    + "\"name\":\"" + json((String) a.get("name")) + "\","
+                    + "\"loggedin\":" + a.get("loggedin") + ","
+                    + "\"banned\":" + a.get("banned") + ","
+                    + "\"slots\":" + a.get("slots") + ","
+                    + "\"gm\":" + maxGm + ","
+                    + "\"lastlogin\":" + a.get("lastlogin") + ","
+                    + "\"characters\":[" + String.join(",", chars) + "]"
+                    + "}");
+        }
+        sendJson(exchange, 200, "[" + String.join(",", rows) + "]");
+    }
+
+    private Character findOnlineByName(String name) {
+        for (World world : Server.getInstance().getWorlds()) {
+            Character chr = world.getPlayerStorage().getCharacterByName(name);
+            if (chr != null) return chr;
+        }
+        return null;
+    }
+
+    private static final java.util.Set<String> OFFLINE_STAT_COLS = java.util.Set.of(
+            "level", "exp", "str", "dex", "int", "luk", "maxhp", "maxmp", "hp", "mp", "meso", "job", "fame", "ap", "gm", "map");
+
+    private record DbCharRef(int id, int accountId, int world, String name) {}
+
+    private DbCharRef loadDbChar(int charId) {
+        try (Connection con = DatabaseConnection.getConnection();
+             PreparedStatement ps = con.prepareStatement("SELECT id, accountid, world, name FROM characters WHERE id = ?")) {
+            ps.setInt(1, charId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                return new DbCharRef(rs.getInt("id"), rs.getInt("accountid"), rs.getInt("world"), rs.getString("name"));
+            }
+        } catch (SQLException e) {
+            return null;
+        }
     }
 
     private void handleCommands(HttpExchange exchange) throws IOException {
@@ -255,6 +377,88 @@ public class AdminDashboardServer {
                     w.setFlag((byte) flag);
                     LabOverrides.setWorldFlag(wid, flag);
                     sendOk(exchange, "World " + wid + " flag set to " + flag + " (persisted).");
+                }
+                case "deleteCharacter" -> {
+                    int charId = Integer.parseInt(body.getOrDefault("charId", "0"));
+                    DbCharRef ref = loadDbChar(charId);
+                    if (ref == null) {
+                        throw new IllegalArgumentException("Character " + charId + " not found.");
+                    }
+                    if (findOnlineByName(ref.name) != null) {
+                        throw new IllegalStateException("Character '" + ref.name + "' is online. Log it out first.");
+                    }
+                    // World must be active so loadCharFromDB can resolve Server.getWorld(...) for guilds, etc.
+                    if (Server.getInstance().getWorld(ref.world) == null) {
+                        throw new IllegalStateException("World " + ref.world + " is not active. Bring it up via setWorldCount first.");
+                    }
+                    Client tempClient = Client.createMock();
+                    try {
+                        Character target = Character.loadCharFromDB(charId, tempClient, false);
+                        boolean ok = Character.deleteCharFromDBLocalLab(target, ref.accountId);
+                        if (!ok) throw new IllegalStateException("Delete returned false.");
+                    } catch (SQLException ex) {
+                        throw new IllegalStateException("DB error loading char: " + ex.getMessage());
+                    }
+                    sendOk(exchange, "Deleted character '" + ref.name + "' (id " + charId + ").");
+                }
+                case "renameCharacter" -> {
+                    int charId = Integer.parseInt(body.getOrDefault("charId", "0"));
+                    String newName = body.getOrDefault("newName", "").trim();
+                    if (newName.length() < 4 || newName.length() > 12) {
+                        throw new IllegalArgumentException("Name must be 4-12 characters.");
+                    }
+                    if (!newName.matches("[A-Za-z0-9]+")) {
+                        throw new IllegalArgumentException("Name must be alphanumeric only.");
+                    }
+                    DbCharRef ref = loadDbChar(charId);
+                    if (ref == null) {
+                        throw new IllegalArgumentException("Character " + charId + " not found.");
+                    }
+                    if (findOnlineByName(ref.name) != null) {
+                        throw new IllegalStateException("Character '" + ref.name + "' is online. Log it out first.");
+                    }
+                    try (Connection con = DatabaseConnection.getConnection()) {
+                        try (PreparedStatement chk = con.prepareStatement("SELECT id FROM characters WHERE LOWER(name) = LOWER(?) AND id != ?")) {
+                            chk.setString(1, newName);
+                            chk.setInt(2, charId);
+                            try (ResultSet rs = chk.executeQuery()) {
+                                if (rs.next()) throw new IllegalStateException("Name '" + newName + "' is already in use.");
+                            }
+                        }
+                        try (PreparedStatement up = con.prepareStatement("UPDATE characters SET name = ? WHERE id = ?")) {
+                            up.setString(1, newName);
+                            up.setInt(2, charId);
+                            up.executeUpdate();
+                        }
+                    } catch (SQLException ex) {
+                        throw new IllegalStateException("DB error: " + ex.getMessage());
+                    }
+                    sendOk(exchange, "Renamed character " + charId + " from '" + ref.name + "' to '" + newName + "'.");
+                }
+                case "setOfflineStat" -> {
+                    int charId = Integer.parseInt(body.getOrDefault("charId", "0"));
+                    String col = body.getOrDefault("stat", "").toLowerCase();
+                    int value = Integer.parseInt(body.getOrDefault("value", "0"));
+                    if (!OFFLINE_STAT_COLS.contains(col)) {
+                        throw new IllegalArgumentException("Stat must be one of " + OFFLINE_STAT_COLS);
+                    }
+                    DbCharRef ref = loadDbChar(charId);
+                    if (ref == null) {
+                        throw new IllegalArgumentException("Character " + charId + " not found.");
+                    }
+                    if (findOnlineByName(ref.name) != null) {
+                        throw new IllegalStateException("Character '" + ref.name + "' is online. Use the Players tab for live edits.");
+                    }
+                    try (Connection con = DatabaseConnection.getConnection();
+                         PreparedStatement up = con.prepareStatement("UPDATE characters SET `" + col + "` = ? WHERE id = ?")) {
+                        up.setInt(1, value);
+                        up.setInt(2, charId);
+                        int affected = up.executeUpdate();
+                        if (affected == 0) throw new IllegalStateException("No row updated.");
+                    } catch (SQLException ex) {
+                        throw new IllegalStateException("DB error: " + ex.getMessage());
+                    }
+                    sendOk(exchange, "Set " + col + " = " + value + " on character " + charId + " (" + ref.name + ").");
                 }
                 case "setWorldCount" -> {
                     int n = Integer.parseInt(body.getOrDefault("count", "0"));

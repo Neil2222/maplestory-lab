@@ -76,6 +76,18 @@
     .world-card { background:var(--panel-2); border:1px solid var(--line); border-radius:6px; padding:12px 14px; margin-bottom:10px; }
     .world-head h3 { margin:0 0 8px; font-size:14px; font-weight:600; }
     .world-grid { display:grid; gap:8px; grid-template-columns: 1fr 1fr 1fr auto; align-items:end; }
+    .acct { background:var(--panel-2); border:1px solid var(--line); border-radius:6px; margin-bottom:8px; }
+    .acct-head { padding:10px 12px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    .acct-head:hover { background:#3a2f25; }
+    .acct-chars { display:none; padding:0 12px 12px; }
+    .acct.open .acct-chars { display:block; }
+    .char { background:var(--panel); border:1px solid var(--line); border-radius:6px; margin-top:6px; }
+    .char-head { padding:8px 12px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; }
+    .char-head:hover { background:var(--panel-2); }
+    .char-body { display:none; padding:0 12px 12px; }
+    .char.open .char-body { display:block; }
+    .char-stats { margin:6px 0 10px; font-size:12px; }
+    .char-grid { display:grid; gap:8px; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
   </style>
 </head>
 <body>
@@ -91,6 +103,7 @@
 
   <nav class="tabs">
     <button data-tab="players" class="active">Players</button>
+    <button data-tab="accounts">Accounts</button>
     <button data-tab="world">World</button>
     <button data-tab="server">Server</button>
     <button data-tab="logs">Logs</button>
@@ -181,6 +194,15 @@
           </div>
           <datalist id="cmdList"></datalist>
         </div>
+      </div>
+    </section>
+
+    <!-- ACCOUNTS TAB -->
+    <section data-panel="accounts" class="hidden">
+      <div class="panel">
+        <h2>Accounts &amp; characters <span class="sub">all accounts in the DB, online or not. <button onclick="loadAccounts()" style="margin-left:6px;">Refresh</button></span></h2>
+        <input id="acctSearch" placeholder="Filter by account or character name…" style="width:100%; margin-bottom:8px;" oninput="renderAccounts()">
+        <div id="accountsList"><div class="empty">Click Refresh to load accounts.</div></div>
       </div>
     </section>
 
@@ -305,6 +327,7 @@
       btn.onclick = () => {
         document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('active', b === btn));
         document.querySelectorAll('[data-panel]').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== btn.dataset.tab));
+        if (btn.dataset.tab === 'accounts' && !accountsCache.length) loadAccounts();
       };
     });
 
@@ -493,6 +516,90 @@
     }
     function escapeHtml(s) {
       return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
+    }
+
+    // --- accounts tab ---
+    let accountsCache = [];
+    async function loadAccounts() {
+      const el = document.getElementById('accountsList');
+      el.innerHTML = '<div class="empty">Loading…</div>';
+      try {
+        accountsCache = await getJson('/api/accounts');
+        renderAccounts();
+      } catch (e) {
+        el.innerHTML = '<div class="empty">Failed to load: ' + e.message + '</div>';
+      }
+    }
+    function renderAccounts() {
+      const el = document.getElementById('accountsList');
+      const filter = (document.getElementById('acctSearch').value || '').toLowerCase();
+      let accounts = accountsCache;
+      if (filter) {
+        accounts = accounts.filter(a =>
+          a.name.toLowerCase().includes(filter) ||
+          (a.characters || []).some(c => c.name.toLowerCase().includes(filter)));
+      }
+      if (!accounts.length) { el.innerHTML = '<div class="empty">No matches.</div>'; return; }
+      el.innerHTML = accounts.map(a => `
+        <div class="acct">
+          <div class="acct-head" onclick="this.parentElement.classList.toggle('open')">
+            <span><b>${escapeHtml(a.name)}</b> <span class="sub">id ${a.id} · ${(a.characters||[]).length} char${a.characters.length===1?'':'s'}${a.loggedin?' · <span style="color:var(--good);">online</span>':''}${a.banned?' · <span style="color:var(--danger);">BANNED</span>':''}${a.gm>0?' · GM '+a.gm:''}</span></span>
+            <span class="sub">${a.lastlogin ? 'last: ' + new Date(a.lastlogin).toLocaleString() : 'never logged in'}</span>
+          </div>
+          <div class="acct-chars">
+            ${(a.characters||[]).map(c => renderCharRow(c)).join('') || '<div class="empty">(no characters)</div>'}
+          </div>
+        </div>`).join('');
+    }
+    function renderCharRow(c) {
+      const onlineBadge = c.online ? '<span style="color:var(--good); font-size:12px;">● online</span>' : '<span style="color:var(--muted); font-size:12px;">offline</span>';
+      const disabled = c.online ? 'disabled title="character is online — use Players tab"' : '';
+      return `
+        <div class="char" data-cid="${c.id}">
+          <div class="char-head" onclick="this.parentElement.classList.toggle('open')">
+            <span><b>${escapeHtml(c.name)}</b> <span class="sub">id ${c.id} · Lv ${c.level} · job ${c.job} · world ${c.world}</span></span>
+            ${onlineBadge}
+          </div>
+          <div class="char-body">
+            <div class="char-stats sub">
+              STR ${c.str} · DEX ${c.dex} · INT ${c.int} · LUK ${c.luk} · HP ${c.maxhp} · MP ${c.maxmp} · AP ${c.ap} · Fame ${c.fame} · Meso ${fmt.format(c.meso)}
+            </div>
+            <div class="char-grid">
+              ${offlineField(c.id,'level',c.level,disabled)}
+              ${offlineField(c.id,'job',c.job,disabled)}
+              ${offlineField(c.id,'str',c.str,disabled)}
+              ${offlineField(c.id,'dex',c.dex,disabled)}
+              ${offlineField(c.id,'int',c.int,disabled)}
+              ${offlineField(c.id,'luk',c.luk,disabled)}
+              ${offlineField(c.id,'maxhp',c.maxhp,disabled)}
+              ${offlineField(c.id,'maxmp',c.maxmp,disabled)}
+              ${offlineField(c.id,'ap',c.ap,disabled)}
+              ${offlineField(c.id,'fame',c.fame,disabled)}
+              ${offlineField(c.id,'meso',c.meso,disabled)}
+            </div>
+            <div class="row" style="margin-top:10px;">
+              <input id="rename_${c.id}" placeholder="New name (4-12 alphanum)" ${disabled}>
+              <button onclick="renameChar(${c.id})" ${disabled}>Rename</button>
+              <button class="danger" onclick="deleteChar(${c.id}, '${escapeHtml(c.name)}')" ${disabled} style="margin-left:auto;">Delete character</button>
+            </div>
+          </div>
+        </div>`;
+    }
+    function offlineField(cid, stat, value, disabled) {
+      return `<label class="field">${stat}<div class="row compact"><input id="off_${cid}_${stat}" type="number" value="${value}" ${disabled}><button onclick="setOfflineStat(${cid},'${stat}')" ${disabled}>Set</button></div></label>`;
+    }
+    function setOfflineStat(cid, stat) {
+      const v = num('off_' + cid + '_' + stat);
+      post({ action:'setOfflineStat', charId: cid, stat, value: v }).then(loadAccounts);
+    }
+    function renameChar(cid) {
+      const newName = document.getElementById('rename_' + cid).value.trim();
+      if (!newName) { toast('Type a new name first.', true); return; }
+      post({ action:'renameCharacter', charId: cid, newName }).then(loadAccounts);
+    }
+    function deleteChar(cid, name) {
+      if (!confirm('Delete character "' + name + '" (id ' + cid + ')? This cannot be undone.')) return;
+      post({ action:'deleteCharacter', charId: cid }).then(loadAccounts);
     }
 
     // --- bootstrap ---
