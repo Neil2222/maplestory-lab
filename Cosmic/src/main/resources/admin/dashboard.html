@@ -71,6 +71,8 @@
       <button onclick="post({action:'rates',exp:num('exprate'),drop:num('droprate'),meso:num('mesorate')})">Set Rates</button>
       <input id="notice" placeholder="Server notice">
       <button onclick="post({action:'notice',message:document.getElementById('notice').value})">Send Notice</button>
+      <h2>Danger zone</h2>
+      <button style="background:var(--danger);color:#fff;border-color:var(--danger);" onclick="if(confirm('Save all online characters and shut down the server?')) post({action:'shutdown'})">Save &amp; Shutdown</button>
       <div id="result" class="status"></div>
     </section>
   </main>

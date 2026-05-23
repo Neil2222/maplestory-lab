@@ -176,6 +176,31 @@ public class AdminDashboardServer {
                     }
                     sendOk(exchange, "Notice sent.");
                 }
+                case "shutdown" -> {
+                    int saved = 0;
+                    for (World world : Server.getInstance().getWorlds()) {
+                        for (Character chr : world.getPlayerStorage().getAllCharacters()) {
+                            if (chr != null && chr.isLoggedin()) {
+                                try {
+                                    chr.saveCharToDB(false);
+                                    saved++;
+                                } catch (Exception ex) {
+                                    // skip failing chars, keep going
+                                }
+                            }
+                        }
+                    }
+                    sendOk(exchange, "Saved " + saved + " characters. Shutting down in 1s.");
+                    Thread shutdownThread = new Thread(() -> {
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException ignored) {
+                        }
+                        Server.getInstance().shutdown(false).run();
+                    }, "Dashboard-Shutdown");
+                    shutdownThread.setDaemon(false);
+                    shutdownThread.start();
+                }
                 default -> sendJson(exchange, 400, "{\"ok\":false,\"message\":\"Unknown action\"}");
             }
         } catch (Exception e) {
