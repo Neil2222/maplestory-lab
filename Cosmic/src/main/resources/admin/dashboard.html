@@ -69,6 +69,7 @@
     .progress .bar { height:100%; background:var(--accent); transition:width .3s; }
     label.field { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted); }
     .hidden { display:none !important; }
+    code { font:12.5px/1.4 ui-monospace, Consolas, monospace; background:#13100d; padding:1px 6px; border-radius:3px; color:#cfe8d8; }
   </style>
 </head>
 <body>
@@ -180,7 +181,52 @@
         <div class="stat"><div class="label">Autosave interval</div><div class="value" id="sAutosave">…</div></div>
       </div>
 
-      <div class="panel" style="margin-top:14px;">
+      <div class="cols" style="margin-top:14px;">
+        <div>
+          <div class="panel">
+            <h2>Network endpoints <span class="sub">all bound to 127.0.0.1 only</span></h2>
+            <table>
+              <thead><tr><th>Service</th><th>Port</th><th>Process</th><th>Role</th></tr></thead>
+              <tbody id="netTable"><tr><td colspan="4" class="empty">…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <div class="panel">
+            <h2>Dashboard HTTP API</h2>
+            <table>
+              <thead><tr><th>Method</th><th>Path</th><th>What</th></tr></thead>
+              <tbody>
+                <tr><td>GET</td><td><code>/</code></td><td>This page (HTML)</td></tr>
+                <tr><td>GET</td><td><code>/api/status</code></td><td>Server status JSON (memory, threads, worlds, rates, autosave)</td></tr>
+                <tr><td>GET</td><td><code>/api/players</code></td><td>Online players JSON</td></tr>
+                <tr><td>GET</td><td><code>/api/logs</code></td><td>Last 200 admin events</td></tr>
+                <tr><td>GET</td><td><code>/api/commands</code></td><td>All 178 GM command names</td></tr>
+                <tr><td>POST</td><td><code>/api/action</code></td><td>Execute action <span class="sub">(godmode, heal, mobvac, tubi, mesos, nx, item, rates, notice, runCommand, shutdown)</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Filesystem paths</h2>
+        <table>
+          <thead><tr><th>What</th><th>Path</th></tr></thead>
+          <tbody>
+            <tr><td>Cosmic server root</td><td><code>C:\dev\maplestory-lab\Cosmic</code></td></tr>
+            <tr><td>Dashboard HTML <span class="sub">(hot-reloaded from disk)</span></td><td><code>Cosmic\src\main\resources\admin\dashboard.html</code></td></tr>
+            <tr><td>Built jar</td><td><code>Cosmic\target\Cosmic.jar</code></td></tr>
+            <tr><td>WZ data (server-side)</td><td><code>Cosmic\wz</code></td></tr>
+            <tr><td>MySQL data dir</td><td><code>C:\dev\maplestory-lab\mysql-data</code></td></tr>
+            <tr><td>Server logs</td><td><code>C:\dev\maplestory-lab\logs</code> and <code>Cosmic\logs</code></td></tr>
+            <tr><td>Start / stop scripts</td><td><code>C:\dev\maplestory-lab\scripts\start-server.ps1</code>, <code>stop-server.ps1</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
         <h2>Server lifecycle</h2>
         <div class="row">
           <button class="danger" onclick="if(confirm('Save all online characters and shut down the server?')) post({action:'shutdown'})">Save &amp; Shutdown</button>
@@ -297,6 +343,21 @@
       document.getElementById('sMemBar').style.width = Math.min(100, Math.round(100*status.memoryUsedMb/status.memoryMaxMb)) + '%';
       document.getElementById('sThreads').textContent = status.threads;
       document.getElementById('sAutosave').textContent = status.autosaveMinutes + ' min';
+
+      // Network endpoints table — built from /api/status worlds[]
+      // Login: hardcoded 8484 in Server.java
+      // Channel: BASE_PORT (7575) + (channel-1) + (world * 100) — Channel.java
+      const rows = [];
+      rows.push(`<tr><td>Login</td><td>8484</td><td>Cosmic JVM</td><td>Auth, char select</td></tr>`);
+      for (const w of (status.worlds || [])) {
+        for (let c = 1; c <= w.channels; c++) {
+          const port = 7575 + (c - 1) + (w.id * 100);
+          rows.push(`<tr><td>World ${w.id} · Ch ${c}</td><td>${port}</td><td>Cosmic JVM</td><td>Game traffic</td></tr>`);
+        }
+      }
+      rows.push(`<tr><td>Admin dashboard</td><td>8787</td><td>Cosmic JVM</td><td>This panel (HTTP)</td></tr>`);
+      rows.push(`<tr><td>MySQL</td><td>3306</td><td>mysqld.exe</td><td>Database (schema <code>cosmic</code>)</td></tr>`);
+      document.getElementById('netTable').innerHTML = rows.join('');
     }
     function renderLogs(rows) {
       const el = document.getElementById('logfeed');
