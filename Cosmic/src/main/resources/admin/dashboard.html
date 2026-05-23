@@ -131,6 +131,7 @@
             <button onclick="act('heal')">Heal</button>
             <button onclick="act('mobvac')">Mob Vac</button>
             <button onclick="act('tubi')">Tubi</button>
+            <button class="danger" onclick="if(confirm('Kick '+selected+'?')) act('kick')" style="margin-left:auto;">Kick</button>
           </div>
         </div>
 
@@ -221,10 +222,18 @@
       </div>
 
       <div class="panel">
-        <h2>Server notice <span class="sub">broadcast in-game</span></h2>
+        <h2>Server notice <span class="sub">one-shot popup broadcast to everyone in-game</span></h2>
         <div class="row">
           <input id="notice" placeholder="Notice message" style="flex:1;">
           <button onclick="post({action:'notice',message:document.getElementById('notice').value})">Send</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Scrolling server message <span class="sub">persistent banner at the top of every player's screen, per world</span></h2>
+        <div class="row">
+          <input id="serverMsg" placeholder="Scrolling banner text (empty = clear)" style="flex:1;">
+          <button onclick="post({action:'setServerMessage', message: document.getElementById('serverMsg').value})">Apply to all worlds</button>
         </div>
       </div>
 
@@ -542,14 +551,24 @@
       if (!accounts.length) { el.innerHTML = '<div class="empty">No matches.</div>'; return; }
       el.innerHTML = accounts.map(a => `
         <div class="acct">
-          <div class="acct-head" onclick="this.parentElement.classList.toggle('open')">
-            <span><b>${escapeHtml(a.name)}</b> <span class="sub">id ${a.id} · ${(a.characters||[]).length} char${a.characters.length===1?'':'s'}${a.loggedin?' · <span style="color:var(--good);">online</span>':''}${a.banned?' · <span style="color:var(--danger);">BANNED</span>':''}${a.gm>0?' · GM '+a.gm:''}</span></span>
-            <span class="sub">${a.lastlogin ? 'last: ' + new Date(a.lastlogin).toLocaleString() : 'never logged in'}</span>
+          <div class="acct-head" onclick="if(!event.target.closest('.acct-ban')) this.parentElement.classList.toggle('open')">
+            <span><b>${escapeHtml(a.name)}</b> <span class="sub">id ${a.id} · ${(a.characters||[]).length} char${a.characters.length===1?'':'s'}${a.loggedin?' · <span style="color:var(--good);">online</span>':''}${a.banned>0?' · <span style="color:var(--danger);">BANNED</span>':''}${a.gm>0?' · GM '+a.gm:''}</span></span>
+            <span class="acct-ban">
+              ${a.banned > 0
+                ? `<button onclick="event.stopPropagation(); post({action:'unbanAccount', accountId:${a.id}}).then(loadAccounts)">Unban</button>`
+                : `<button class="danger" onclick="event.stopPropagation(); banAccount(${a.id}, '${escapeHtml(a.name)}')">Ban</button>`}
+              <span class="sub" style="margin-left:8px;">${a.lastlogin ? 'last: ' + new Date(a.lastlogin).toLocaleString() : 'never logged in'}</span>
+            </span>
           </div>
           <div class="acct-chars">
             ${(a.characters||[]).map(c => renderCharRow(c)).join('') || '<div class="empty">(no characters)</div>'}
           </div>
         </div>`).join('');
+    }
+    function banAccount(id, name) {
+      const reason = prompt('Ban reason for account "' + name + '" (id ' + id + '):', 'Banned by admin dashboard.');
+      if (reason === null) return;
+      post({ action:'banAccount', accountId: id, reason }).then(loadAccounts);
     }
     function renderCharRow(c) {
       const onlineBadge = c.online ? '<span style="color:var(--good); font-size:12px;">● online</span>' : '<span style="color:var(--muted); font-size:12px;">offline</span>';
@@ -578,6 +597,11 @@
               ${offlineField(c.id,'meso',c.meso,disabled)}
             </div>
             <div class="row" style="margin-top:10px;">
+              <label class="sub" style="display:flex; align-items:center; gap:4px;">GM lvl
+                <input id="gm_${c.id}" type="number" value="${c.gm}" min="0" max="6" style="width:60px;">
+              </label>
+              <button onclick="setCharGm(${c.id})">Apply GM</button>
+              ${c.online ? `<button class="danger" onclick="post({action:'kick',name:'${escapeHtml(c.name)}'}).then(loadAccounts)">Kick</button>` : ''}
               <input id="rename_${c.id}" placeholder="New name (4-12 alphanum)" ${disabled}>
               <button onclick="renameChar(${c.id})" ${disabled}>Rename</button>
               <button class="danger" onclick="deleteChar(${c.id}, '${escapeHtml(c.name)}')" ${disabled} style="margin-left:auto;">Delete character</button>
@@ -600,6 +624,10 @@
     function deleteChar(cid, name) {
       if (!confirm('Delete character "' + name + '" (id ' + cid + ')? This cannot be undone.')) return;
       post({ action:'deleteCharacter', charId: cid }).then(loadAccounts);
+    }
+    function setCharGm(cid) {
+      const level = num('gm_' + cid);
+      post({ action:'setGmLevel', charId: cid, level }).then(loadAccounts);
     }
 
     // --- bootstrap ---

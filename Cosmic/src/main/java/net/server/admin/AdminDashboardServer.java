@@ -469,16 +469,111 @@ public class AdminDashboardServer {
                     int current = Server.getInstance().getWorlds().size();
                     LabOverrides.setWorldCount(n);
                     if (n > current) {
-                        // Spawn the missing worlds now so they show up without a restart.
                         for (int i = current; i < n; i++) {
                             Server.getInstance().addWorld();
                         }
-                        sendOk(exchange, "World count set to " + n + ". Added " + (n - current) + " world(s) live; persisted to lab-overrides.");
+                        sendOk(exchange, "World count set to " + n + ". Added " + (n - current) + " world(s) live; persisted.");
                     } else if (n < current) {
-                        sendOk(exchange, "World count target set to " + n + " (persisted). Active worlds will adjust on next restart — Cosmic doesn't support live world removal.");
+                        int removed = 0;
+                        while (Server.getInstance().getWorlds().size() > n) {
+                            if (!Server.getInstance().removeWorld()) break;
+                            removed++;
+                        }
+                        if (removed == (current - n)) {
+                            sendOk(exchange, "World count set to " + n + ". Removed " + removed + " world(s) live; persisted.");
+                        } else {
+                            sendOk(exchange, "Partially removed " + removed + " world(s); some had connected players. Reduce activity first.");
+                        }
                     } else {
-                        sendOk(exchange, "World count already at " + n + ". Persisted to lab-overrides.");
+                        sendOk(exchange, "World count already at " + n + ". Persisted.");
                     }
+                }
+                case "setServerMessage" -> {
+                    String msg = body.getOrDefault("message", "");
+                    String widStr = body.getOrDefault("worldId", "").trim();
+                    List<World> targets = widStr.isEmpty()
+                            ? Server.getInstance().getWorlds()
+                            : List.of(java.util.Objects.requireNonNull(Server.getInstance().getWorld(Integer.parseInt(widStr)), "Unknown world"));
+                    for (World w : targets) {
+                        w.setServerMessage(msg);
+                    }
+                    sendOk(exchange, "Server message updated for " + (widStr.isEmpty() ? "all worlds" : "world " + widStr) + ".");
+                }
+                case "banAccount" -> {
+                    int accountId = Integer.parseInt(body.getOrDefault("accountId", "0"));
+                    String reason = body.getOrDefault("reason", "Banned by admin dashboard.").trim();
+                    int banFlag = 1;
+                    try (Connection con = DatabaseConnection.getConnection();
+                         PreparedStatement up = con.prepareStatement("UPDATE accounts SET banned = ?, banreason = ? WHERE id = ?")) {
+                        up.setInt(1, banFlag);
+                        up.setString(2, reason);
+                        up.setInt(3, accountId);
+                        if (up.executeUpdate() == 0) throw new IllegalArgumentException("Account " + accountId + " not found.");
+                    } catch (SQLException ex) {
+                        throw new IllegalStateException("DB error: " + ex.getMessage());
+                    }
+                    // Kick any online character on that account.
+                    int kicked = 0;
+                    for (World w : Server.getInstance().getWorlds()) {
+                        for (Character chr : w.getPlayerStorage().getAllCharacters()) {
+                            if (chr.getClient() != null && chr.getClient().getAccID() == accountId) {
+                                chr.getClient().disconnect(false, false);
+                                kicked++;
+                            }
+                        }
+                    }
+                    sendOk(exchange, "Banned account " + accountId + (kicked > 0 ? " (kicked " + kicked + " online char(s))." : "."));
+                }
+                case "unbanAccount" -> {
+                    int accountId = Integer.parseInt(body.getOrDefault("accountId", "0"));
+                    try (Connection con = DatabaseConnection.getConnection()) {
+                        try (PreparedStatement up = con.prepareStatement("UPDATE accounts SET banned = -1, banreason = NULL WHERE id = ?")) {
+                            up.setInt(1, accountId);
+                            if (up.executeUpdate() == 0) throw new IllegalArgumentException("Account " + accountId + " not found.");
+                        }
+                        try (PreparedStatement del = con.prepareStatement("DELETE FROM ipbans WHERE aid = ?")) {
+                            del.setInt(1, accountId);
+                            del.executeUpdate();
+                        }
+                        try (PreparedStatement del = con.prepareStatement("DELETE FROM macbans WHERE aid = ?")) {
+                            del.setInt(1, accountId);
+                            del.executeUpdate();
+                        }
+                    } catch (SQLException ex) {
+                        throw new IllegalStateException("DB error: " + ex.getMessage());
+                    }
+                    sendOk(exchange, "Unbanned account " + accountId + " (cleared banned flag + ip/mac bans).");
+                }
+                case "setGmLevel" -> {
+                    int charId = Integer.parseInt(body.getOrDefault("charId", "0"));
+                    int level = Integer.parseInt(body.getOrDefault("level", "0"));
+                    if (level < 0 || level > 6) {
+                        throw new IllegalArgumentException("GM level must be 0-6.");
+                    }
+                    DbCharRef ref = loadDbChar(charId);
+                    if (ref == null) {
+                        throw new IllegalArgumentException("Character " + charId + " not found.");
+                    }
+                    Character online = findOnlineByName(ref.name);
+                    if (online != null) {
+                        online.setGMLevel(level);
+                        online.getClient().setGMLevel(level);
+                    }
+                    try (Connection con = DatabaseConnection.getConnection();
+                         PreparedStatement up = con.prepareStatement("UPDATE characters SET gm = ? WHERE id = ?")) {
+                        up.setInt(1, level);
+                        up.setInt(2, charId);
+                        up.executeUpdate();
+                    } catch (SQLException ex) {
+                        throw new IllegalStateException("DB error: " + ex.getMessage());
+                    }
+                    sendOk(exchange, "GM level for '" + ref.name + "' set to " + level + (online != null ? " (live)" : " (offline DB)") + ".");
+                }
+                case "kick" -> {
+                    Character target = requirePlayer(body);
+                    String name = target.getName();
+                    target.getClient().disconnect(false, false);
+                    sendOk(exchange, "Kicked '" + name + "'.");
                 }
                 case "notice" -> {
                     String message = body.getOrDefault("message", "").trim();
