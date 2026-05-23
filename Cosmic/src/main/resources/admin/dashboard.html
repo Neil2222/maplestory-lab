@@ -421,28 +421,42 @@
       if (selected) { el.textContent = selected; el.classList.remove('none'); }
       else { el.textContent = 'no player selected'; el.classList.add('none'); }
     }
+    let renderedWorldsKey = '';
     function renderWorlds(worlds) {
       const wcInput = document.getElementById('worldCount');
       if (wcInput && !wcInput.value) wcInput.value = worlds.length;
       const list = document.getElementById('worldsList');
-      if (!worlds.length) { list.innerHTML = '<div class="empty">No worlds</div>'; return; }
-      list.innerHTML = worlds.map(w => `
-        <div class="world-card">
-          <div class="world-head">
-            <h3>${w.name} <span class="sub">world ${w.id} · ${w.channels} ch · ${w.players} online</span></h3>
-          </div>
-          <div class="world-grid">
-            <label class="field">EXP<input id="wexp_${w.id}" type="number" value="${w.expRate}" min="1"></label>
-            <label class="field">Drop<input id="wdrop_${w.id}" type="number" value="${w.dropRate}" min="1"></label>
-            <label class="field">Meso<input id="wmeso_${w.id}" type="number" value="${w.mesoRate}" min="1"></label>
-            <div style="align-self:end;"><button class="primary" onclick="setRate(${w.id})">Apply rates</button></div>
-          </div>
-          <div class="world-grid" style="margin-top:8px;">
-            <label class="field">Flag <span class="sub">0=none, 1=Event, 2=New, 3=Hot</span><input id="wflag_${w.id}" type="number" value="${w.flag}" min="0" max="5"></label>
-            <div style="align-self:end;"><button onclick="setFlag(${w.id})">Set flag</button></div>
-          </div>
-          ${w.eventMessage ? `<div class="sub" style="margin-top:8px;">Event message: <code>${escapeHtml(w.eventMessage)}</code></div>` : ''}
-        </div>`).join('');
+      if (!worlds.length) { list.innerHTML = '<div class="empty">No worlds</div>'; renderedWorldsKey = ''; return; }
+
+      // Only rebuild the world cards when the set of worlds changes — otherwise
+      // we'd clobber any input the user is currently typing into.
+      const key = worlds.map(w => w.id).join(',');
+      if (key !== renderedWorldsKey) {
+        list.innerHTML = worlds.map(w => `
+          <div class="world-card" data-wid="${w.id}">
+            <div class="world-head">
+              <h3>${w.name} <span class="sub world-sub"></span></h3>
+            </div>
+            <div class="world-grid">
+              <label class="field">EXP<input id="wexp_${w.id}" type="number" value="${w.expRate}" min="1"></label>
+              <label class="field">Drop<input id="wdrop_${w.id}" type="number" value="${w.dropRate}" min="1"></label>
+              <label class="field">Meso<input id="wmeso_${w.id}" type="number" value="${w.mesoRate}" min="1"></label>
+              <div style="align-self:end;"><button class="primary" onclick="setRate(${w.id})">Apply rates</button></div>
+            </div>
+            <div class="world-grid" style="margin-top:8px;">
+              <label class="field">Flag <span class="sub">0=none, 1=Event, 2=New, 3=Hot</span><input id="wflag_${w.id}" type="number" value="${w.flag}" min="0" max="5"></label>
+              <div style="align-self:end;"><button onclick="setFlag(${w.id})">Set flag</button></div>
+            </div>
+            ${w.eventMessage ? `<div class="sub" style="margin-top:8px;">Event message: <code>${escapeHtml(w.eventMessage)}</code></div>` : ''}
+          </div>`).join('');
+        renderedWorldsKey = key;
+      }
+
+      // Always refresh the read-only subtitle (channel count, online players).
+      for (const w of worlds) {
+        const sub = list.querySelector(`.world-card[data-wid="${w.id}"] .world-sub`);
+        if (sub) sub.textContent = `world ${w.id} · ${w.channels} ch · ${w.players} online`;
+      }
     }
     function setRate(wid) {
       post({ action:'rates', worldId: wid, exp: num('wexp_'+wid), drop: num('wdrop_'+wid), meso: num('wmeso_'+wid) });
