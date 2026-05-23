@@ -5,106 +5,339 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Maple Lab Admin</title>
   <style>
-    :root { --bg:#f5f2eb; --panel:#fffaf0; --ink:#241b16; --muted:#776c63; --line:#d7c7aa; --accent:#2e7d74; --danger:#a43131; }
+    :root {
+      --bg:#1c1814; --panel:#2a231d; --panel-2:#332a23; --ink:#f5ecdc; --muted:#a89580;
+      --line:#4a3d33; --accent:#3aa597; --accent-2:#2e7d74; --danger:#c44; --warn:#d49a3a;
+      --good:#4ea96c;
+    }
     * { box-sizing: border-box; }
-    body { margin:0; font:14px/1.4 system-ui, Segoe UI, sans-serif; background:var(--bg); color:var(--ink); }
-    header { padding:18px 22px; background:#2f241d; color:#fff7e8; display:flex; align-items:center; justify-content:space-between; }
-    h1 { margin:0; font-size:20px; letter-spacing:0; }
-    main { padding:18px 22px; display:grid; gap:16px; grid-template-columns: 1.4fr .8fr; }
-    section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; }
-    h2 { margin:0 0 12px; font-size:15px; }
+    body { margin:0; font:14px/1.45 system-ui, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
+    a { color:var(--accent); }
+    header { padding:14px 22px; background:#13100d; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:18px; }
+    header h1 { margin:0; font-size:17px; letter-spacing:0.3px; font-weight:600; }
+    header h1 small { color:var(--muted); font-weight:400; margin-left:8px; }
+    .badges { display:flex; gap:10px; margin-left:auto; flex-wrap:wrap; font-size:12px; }
+    .badge { background:var(--panel); border:1px solid var(--line); padding:5px 10px; border-radius:6px; color:var(--muted); }
+    .badge b { color:var(--ink); font-weight:600; margin-left:4px; }
+    .badge.good b { color:var(--good); }
+    .badge.warn b { color:var(--warn); }
+    nav.tabs { display:flex; gap:2px; padding:0 22px; background:#13100d; border-bottom:1px solid var(--line); }
+    nav.tabs button { background:transparent; color:var(--muted); border:0; padding:11px 16px; font:inherit; cursor:pointer; border-bottom:2px solid transparent; }
+    nav.tabs button:hover { color:var(--ink); }
+    nav.tabs button.active { color:var(--ink); border-bottom-color:var(--accent); }
+    main { padding:18px 22px; }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:14px; }
+    .panel h2 { margin:0 0 12px; font-size:14px; font-weight:600; color:var(--ink); display:flex; align-items:center; gap:8px; }
+    .panel h2 .sub { color:var(--muted); font-weight:400; font-size:12px; }
     table { width:100%; border-collapse:collapse; }
-    th, td { padding:8px 7px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
-    th { color:var(--muted); font-size:12px; font-weight:650; }
-    tr.selected { background:#e7f2ee; }
-    button, input { font:inherit; border-radius:6px; border:1px solid var(--line); padding:8px 9px; background:white; color:var(--ink); }
-    button { cursor:pointer; background:#fff; }
-    button.primary { background:var(--accent); color:white; border-color:var(--accent); }
-    .toolbar, .grid { display:grid; gap:9px; }
-    .grid.two { grid-template-columns: 1fr 1fr; }
-    .grid.three { grid-template-columns: 1fr 1fr 1fr; }
+    th, td { padding:8px 9px; border-bottom:1px solid var(--line); text-align:left; }
+    th { color:var(--muted); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
+    tbody tr { cursor:pointer; }
+    tbody tr:hover { background:var(--panel-2); }
+    tbody tr.selected { background:#1f4842; }
+    .empty { color:var(--muted); padding:24px; text-align:center; }
+    button, input, select { font:inherit; border-radius:6px; border:1px solid var(--line); padding:7px 10px; background:#1a1612; color:var(--ink); }
+    button { cursor:pointer; }
+    button:hover { background:var(--panel-2); }
+    button.primary { background:var(--accent-2); border-color:var(--accent-2); color:#fff; }
+    button.primary:hover { background:var(--accent); }
+    button.danger { background:transparent; border-color:var(--danger); color:var(--danger); }
+    button.danger:hover { background:var(--danger); color:#fff; }
+    input::placeholder { color:#6a5b4d; }
     .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    .muted, .status { color:var(--muted); }
-    .selectedName { font-weight:700; }
-    @media (max-width: 900px) { main { grid-template-columns:1fr; } th:nth-child(3), td:nth-child(3), th:nth-child(5), td:nth-child(5) { display:none; } }
+    .row.compact { gap:6px; }
+    .grid { display:grid; gap:9px; }
+    .grid.two { grid-template-columns:1fr 1fr; }
+    .grid.three { grid-template-columns:1fr 1fr 1fr; }
+    .cols { display:grid; gap:14px; grid-template-columns:1.4fr 1fr; }
+    @media (max-width: 1000px) { .cols { grid-template-columns:1fr; } }
+    .stat { background:var(--panel-2); border:1px solid var(--line); border-radius:6px; padding:10px 12px; }
+    .stat .label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.5px; }
+    .stat .value { font-size:20px; font-weight:600; margin-top:2px; }
+    .selectedName { color:var(--accent); font-weight:600; }
+    .selectedName.none { color:var(--muted); font-weight:400; }
+    .toast { position:fixed; right:18px; bottom:18px; background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--accent); padding:10px 14px; border-radius:6px; max-width:380px; opacity:0; transition:opacity .25s, transform .25s; transform:translateY(8px); pointer-events:none; }
+    .toast.show { opacity:1; transform:translateY(0); }
+    .toast.error { border-left-color:var(--danger); }
+    .logfeed { font:12.5px/1.4 ui-monospace, Consolas, monospace; max-height:520px; overflow:auto; background:#13100d; border:1px solid var(--line); border-radius:6px; padding:10px 12px; }
+    .logfeed .row { padding:3px 0; gap:8px; border-bottom:1px solid #20180f; }
+    .logfeed .row:last-child { border-bottom:0; }
+    .logfeed .time { color:var(--muted); flex:0 0 70px; }
+    .logfeed .type { flex:0 0 80px; color:var(--accent); }
+    .logfeed .type.command { color:var(--warn); }
+    .progress { background:var(--panel-2); height:8px; border-radius:4px; overflow:hidden; margin-top:6px; }
+    .progress .bar { height:100%; background:var(--accent); transition:width .3s; }
+    label.field { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted); }
+    .hidden { display:none !important; }
   </style>
 </head>
 <body>
   <header>
-    <h1>Maple Lab Admin</h1>
-    <div id="status" class="status"></div>
+    <h1>Maple Lab Admin <small id="hdrSelected" class="selectedName none">no player selected</small></h1>
+    <div class="badges">
+      <span class="badge good">status <b id="bStatus">…</b></span>
+      <span class="badge">players <b id="bPlayers">…</b></span>
+      <span class="badge">memory <b id="bMem">…</b></span>
+      <span class="badge">uptime <b id="bUptime">…</b></span>
+    </div>
   </header>
+
+  <nav class="tabs">
+    <button data-tab="players" class="active">Players</button>
+    <button data-tab="world">World</button>
+    <button data-tab="server">Server</button>
+    <button data-tab="logs">Logs</button>
+  </nav>
+
   <main>
-    <section>
-      <h2>Online Players</h2>
-      <table>
-        <thead><tr><th>Name</th><th>Account</th><th>Job</th><th>Level</th><th>Map</th><th>Mesos</th><th>NX</th><th>God</th></tr></thead>
-        <tbody id="players"></tbody>
-      </table>
+    <!-- PLAYERS TAB -->
+    <section data-panel="players" class="cols">
+      <div>
+        <div class="panel">
+          <h2>Online players <span class="sub" id="playerCount"></span></h2>
+          <table>
+            <thead><tr><th>Name</th><th>Acct</th><th>Job</th><th>Lv</th><th>Map</th><th>Mesos</th><th>NX</th><th>God</th></tr></thead>
+            <tbody id="players"><tr><td colspan="8" class="empty">No players online</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel">
+          <h2>Quick actions <span class="sub">requires selected player</span></h2>
+          <div class="row">
+            <button class="primary" onclick="act('godmode',{enabled:true})">Godmode On</button>
+            <button onclick="act('godmode',{enabled:false})">Godmode Off</button>
+            <button onclick="act('heal')">Heal</button>
+            <button onclick="act('mobvac')">Mob Vac</button>
+            <button onclick="act('tubi')">Tubi</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Give</h2>
+          <div class="grid two">
+            <input id="mesos" type="number" value="1000000">
+            <button onclick="act('mesos',{amount:num('mesos')})">Mesos</button>
+            <input id="nx" type="number" value="10000">
+            <button onclick="act('nx',{amount:num('nx')})">NX</button>
+            <input id="itemId" type="number" placeholder="Item ID" value="2000005">
+            <input id="quantity" type="number" placeholder="Qty" value="10">
+          </div>
+          <div style="margin-top:8px;">
+            <button class="primary" onclick="act('item',{itemId:num('itemId'),quantity:num('quantity')})">Give Item</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Run GM command <span class="sub">any of <span id="cmdCount">…</span> registered commands</span></h2>
+          <div class="row">
+            <input id="cmdName" list="cmdList" placeholder="command (e.g. warp)" style="flex:1; min-width:140px;">
+            <input id="cmdArgs" placeholder="args (space-separated)" style="flex:2; min-width:160px;">
+            <button class="primary" onclick="runCmd()">Run</button>
+          </div>
+          <datalist id="cmdList"></datalist>
+        </div>
+      </div>
     </section>
-    <section class="toolbar">
-      <h2>Controls <span id="selected" class="selectedName muted">select a player</span></h2>
-      <div class="row">
-        <button class="primary" onclick="act('godmode',{enabled:true})">Godmode On</button>
-        <button onclick="act('godmode',{enabled:false})">Godmode Off</button>
-        <button onclick="act('heal')">Heal</button>
+
+    <!-- WORLD TAB -->
+    <section data-panel="world" class="hidden">
+      <div class="panel">
+        <h2>World rates <span class="sub">runtime, no restart</span></h2>
+        <div class="grid three">
+          <label class="field">EXP rate<input id="exprate" type="number" value="1" min="1"></label>
+          <label class="field">Drop rate<input id="droprate" type="number" value="1" min="1"></label>
+          <label class="field">Meso rate<input id="mesorate" type="number" value="1" min="1"></label>
+        </div>
+        <div style="margin-top:10px;">
+          <button class="primary" onclick="post({action:'rates',exp:num('exprate'),drop:num('droprate'),meso:num('mesorate')})">Apply rates</button>
+        </div>
       </div>
-      <div class="row">
-        <button onclick="act('mobvac')">Mob Vac</button>
-        <button onclick="act('tubi')">Tubi</button>
+
+      <div class="panel">
+        <h2>Server notice <span class="sub">broadcast in-game</span></h2>
+        <div class="row">
+          <input id="notice" placeholder="Notice message" style="flex:1;">
+          <button onclick="post({action:'notice',message:document.getElementById('notice').value})">Send</button>
+        </div>
       </div>
-      <div class="grid two">
-        <input id="mesos" type="number" value="1000000">
-        <button onclick="act('mesos',{amount:num('mesos')})">Give Mesos</button>
-        <input id="nx" type="number" value="10000">
-        <button onclick="act('nx',{amount:num('nx')})">Give NX</button>
-        <input id="itemId" type="number" placeholder="Item ID" value="2000005">
-        <input id="quantity" type="number" placeholder="Qty" value="10">
-        <button class="primary" onclick="act('item',{itemId:num('itemId'),quantity:num('quantity')})">Give Item</button>
+
+      <div class="panel">
+        <h2>Worlds</h2>
+        <table>
+          <thead><tr><th>ID</th><th>Channels</th><th>Players</th><th>EXP</th><th>Drop</th><th>Meso</th></tr></thead>
+          <tbody id="worldsTable"><tr><td colspan="6" class="empty">…</td></tr></tbody>
+        </table>
       </div>
-      <h2>World Rates</h2>
+    </section>
+
+    <!-- SERVER TAB -->
+    <section data-panel="server" class="hidden">
       <div class="grid three">
-        <input id="exprate" type="number" value="1" min="1">
-        <input id="droprate" type="number" value="1" min="1">
-        <input id="mesorate" type="number" value="1" min="1">
+        <div class="stat"><div class="label">Memory used</div><div class="value" id="sMemUsed">…</div><div class="progress"><div class="bar" id="sMemBar" style="width:0"></div></div></div>
+        <div class="stat"><div class="label">Threads</div><div class="value" id="sThreads">…</div></div>
+        <div class="stat"><div class="label">Autosave interval</div><div class="value" id="sAutosave">…</div></div>
       </div>
-      <button onclick="post({action:'rates',exp:num('exprate'),drop:num('droprate'),meso:num('mesorate')})">Set Rates</button>
-      <input id="notice" placeholder="Server notice">
-      <button onclick="post({action:'notice',message:document.getElementById('notice').value})">Send Notice</button>
-      <h2>Danger zone</h2>
-      <button style="background:var(--danger);color:#fff;border-color:var(--danger);" onclick="if(confirm('Save all online characters and shut down the server?')) post({action:'shutdown'})">Save &amp; Shutdown</button>
-      <div id="result" class="status"></div>
+
+      <div class="panel" style="margin-top:14px;">
+        <h2>Server lifecycle</h2>
+        <div class="row">
+          <button class="danger" onclick="if(confirm('Save all online characters and shut down the server?')) post({action:'shutdown'})">Save &amp; Shutdown</button>
+          <span class="sub" style="color:var(--muted); font-size:12px;">Calls /api/action shutdown — saves chars, then exits JVM cleanly.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- LOGS TAB -->
+    <section data-panel="logs" class="hidden">
+      <div class="panel">
+        <h2>Recent admin events <span class="sub">latest first, last 200 in memory</span></h2>
+        <div class="logfeed" id="logfeed"><div class="empty">No events yet.</div></div>
+      </div>
     </section>
   </main>
+
+  <div id="toast" class="toast"></div>
+
   <script>
+    // --- state ---
     let selected = null;
     const fmt = new Intl.NumberFormat();
     const num = id => Number(document.getElementById(id).value || 0);
-    async function getJson(url){ const r = await fetch(url); return r.json(); }
-    async function post(payload){
-      const r = await fetch('/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-      const j = await r.json();
-      document.getElementById('result').textContent = j.message || (j.ok ? 'OK' : 'Failed');
-      await refresh();
+
+    // --- tab nav ---
+    document.querySelectorAll('nav.tabs button').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('active', b === btn));
+        document.querySelectorAll('[data-panel]').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== btn.dataset.tab));
+      };
+    });
+
+    // --- networking ---
+    async function getJson(url) { const r = await fetch(url); return r.json(); }
+    async function post(payload) {
+      try {
+        const r = await fetch('/api/action', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+        const j = await r.json();
+        toast(j.message || (j.ok ? 'OK' : 'Failed'), !j.ok);
+        await refresh();
+      } catch (e) {
+        toast('Request failed: ' + e.message, true);
+      }
     }
-    function act(action, extra={}){
-      if(!selected){ document.getElementById('result').textContent='Select a player first.'; return; }
-      post({action,name:selected,...extra});
+    function act(action, extra={}) {
+      if (!selected) { toast('Select a player first.', true); return; }
+      post({ action, name:selected, ...extra });
     }
-    async function refresh(){
-      const [status, players] = await Promise.all([getJson('/api/status'), getJson('/api/players')]);
-      document.getElementById('status').textContent = `${players.length} online · uptime ${Math.floor(status.uptimeMs/1000)}s`;
+    function runCmd() {
+      const cmd = document.getElementById('cmdName').value.trim();
+      const args = document.getElementById('cmdArgs').value.trim();
+      if (!cmd) { toast('Enter a command name.', true); return; }
+      if (!selected) { toast('Select a player first.', true); return; }
+      post({ action:'runCommand', name:selected, command:cmd, args });
+    }
+
+    // --- toast ---
+    let toastTimer = null;
+    function toast(msg, isError) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.toggle('error', !!isError);
+      t.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+    }
+
+    // --- formatters ---
+    function fmtUptime(ms) {
+      const s = Math.floor(ms/1000);
+      if (s < 60) return s + 's';
+      const m = Math.floor(s/60);
+      if (m < 60) return m + 'm ' + (s%60) + 's';
+      const h = Math.floor(m/60);
+      return h + 'h ' + (m%60) + 'm';
+    }
+    function fmtTime(t) {
+      const d = new Date(t); return d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    }
+
+    // --- renderers ---
+    function renderHeader(status, playerCount) {
+      document.getElementById('bStatus').textContent = status.online ? 'online' : 'offline';
+      document.getElementById('bPlayers').textContent = playerCount;
+      document.getElementById('bMem').textContent = status.memoryUsedMb + ' / ' + status.memoryMaxMb + ' MB';
+      document.getElementById('bUptime').textContent = fmtUptime(status.uptimeMs);
+    }
+    function renderPlayers(list) {
+      document.getElementById('playerCount').textContent = list.length ? '(' + list.length + ')' : '';
       const body = document.getElementById('players');
+      if (!list.length) { body.innerHTML = '<tr><td colspan="8" class="empty">No players online</td></tr>'; return; }
       body.innerHTML = '';
-      for(const p of players){
+      for (const p of list) {
         const tr = document.createElement('tr');
-        if(p.name === selected) tr.className = 'selected';
+        if (p.name === selected) tr.className = 'selected';
         tr.innerHTML = `<td>${p.name}</td><td>${p.account}</td><td>${p.job}</td><td>${p.level}</td><td>${p.map}</td><td>${fmt.format(p.meso)}</td><td>${fmt.format(p.nx)}</td><td>${p.godmode ? 'on':'off'}</td>`;
-        tr.onclick = () => { selected = p.name; document.getElementById('selected').textContent = p.name; refresh(); };
+        tr.onclick = () => { selected = p.name; renderSelected(); renderPlayers(list); };
         body.appendChild(tr);
       }
     }
-    refresh(); setInterval(refresh, 3000);
+    function renderSelected() {
+      const el = document.getElementById('hdrSelected');
+      if (selected) { el.textContent = selected; el.classList.remove('none'); }
+      else { el.textContent = 'no player selected'; el.classList.add('none'); }
+    }
+    function renderWorlds(worlds) {
+      const body = document.getElementById('worldsTable');
+      if (!worlds.length) { body.innerHTML = '<tr><td colspan="6" class="empty">No worlds</td></tr>'; return; }
+      body.innerHTML = worlds.map(w => `<tr><td>${w.id}</td><td>${w.channels}</td><td>${w.players}</td><td>x${w.expRate}</td><td>x${w.dropRate}</td><td>x${w.mesoRate}</td></tr>`).join('');
+    }
+    function renderServer(status) {
+      document.getElementById('sMemUsed').textContent = status.memoryUsedMb + ' / ' + status.memoryMaxMb + ' MB';
+      document.getElementById('sMemBar').style.width = Math.min(100, Math.round(100*status.memoryUsedMb/status.memoryMaxMb)) + '%';
+      document.getElementById('sThreads').textContent = status.threads;
+      document.getElementById('sAutosave').textContent = status.autosaveMinutes + ' min';
+    }
+    function renderLogs(rows) {
+      const el = document.getElementById('logfeed');
+      if (!rows.length) { el.innerHTML = '<div class="empty">No events yet.</div>'; return; }
+      const ordered = rows.slice().reverse();
+      el.innerHTML = ordered.map(r => `<div class="row"><span class="time">${fmtTime(r.t)}</span><span class="type ${r.type}">${r.type}</span><span>${escapeHtml(r.message)}</span></div>`).join('');
+    }
+    function escapeHtml(s) {
+      return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
+    }
+
+    // --- bootstrap ---
+    async function loadCommands() {
+      try {
+        const names = await getJson('/api/commands');
+        document.getElementById('cmdCount').textContent = names.length;
+        document.getElementById('cmdList').innerHTML = names.map(n => `<option value="${n}">`).join('');
+      } catch (e) { /* tolerate */ }
+    }
+
+    async function refresh() {
+      try {
+        const [status, players, logs] = await Promise.all([
+          getJson('/api/status'),
+          getJson('/api/players'),
+          getJson('/api/logs')
+        ]);
+        renderHeader(status, players.length);
+        renderPlayers(players);
+        renderWorlds(status.worlds || []);
+        renderServer(status);
+        renderLogs(logs);
+      } catch (e) {
+        document.getElementById('bStatus').textContent = 'unreachable';
+      }
+    }
+
+    renderSelected();
+    loadCommands();
+    refresh();
+    setInterval(refresh, 3000);
   </script>
 </body>
 </html>
