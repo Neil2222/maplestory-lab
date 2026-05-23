@@ -136,6 +136,7 @@
       <span class="badge">players <b id="bPlayers">…</b></span>
       <span class="badge">memory <b id="bMem">…</b></span>
       <span class="badge">uptime <b id="bUptime">…</b></span>
+      <a href="/trainer" target="_blank" class="badge" style="color:var(--warn); text-decoration:none;">Trainer ↗</a>
     </div>
   </header>
 
@@ -406,10 +407,30 @@
 
   <script>
     // --- state ---
-    let selected = null;
-    let selectedPlayerInfo = null;  // full player record from /api/players for the selected name
+    // Selection is mirrored to localStorage so the /trainer window (or another
+    // dashboard tab) can hook the same character without picking it twice.
+    const SHARED_KEY = 'mlab.selectedCharacter';
+    let selected = localStorage.getItem(SHARED_KEY) || null;
+    let selectedPlayerInfo = null;
     const fmt = new Intl.NumberFormat();
     const num = id => Number(document.getElementById(id).value || 0);
+
+    function shareSelected(name) {
+      if (name) localStorage.setItem(SHARED_KEY, name);
+      else      localStorage.removeItem(SHARED_KEY);
+    }
+
+    // Pick up cross-window changes (trainer changing the hook, or a second
+    // dashboard tab picking a different character).
+    window.addEventListener('storage', e => {
+      if (e.key !== SHARED_KEY) return;
+      selected = e.newValue || null;
+      const picker = document.getElementById('charPicker');
+      if (picker) picker.value = selected || '';
+      renderSelected();
+      if (latestPlayers) renderSidebar(latestPlayers);
+      if (itemsCache) renderItems();
+    });
 
     // --- tab nav ---
     document.querySelectorAll('nav.tabs button').forEach(btn => {
@@ -436,8 +457,8 @@
     function onCharPick() {
       const picker = document.getElementById('charPicker');
       selected = picker.value || null;
+      shareSelected(selected);
       renderSelected();
-      // Re-render relevant panels for the new pick.
       if (latestPlayers) renderSidebar(latestPlayers);
       if (itemsCache) renderItems();
     }
@@ -532,8 +553,10 @@
         if (previous && list.some(p => p.name === previous)) {
           picker.value = previous;
         } else if (previous) {
-          // Character we had selected logged out. Drop the selection.
+          // Character we had selected logged out. Drop the selection here and
+          // in the shared localStorage so the trainer window unsticks too.
           selected = null;
+          shareSelected(null);
         }
         renderedPickerKey = key;
       }

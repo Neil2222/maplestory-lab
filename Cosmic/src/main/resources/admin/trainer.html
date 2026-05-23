@@ -126,8 +126,19 @@
     const picker = document.getElementById('playerPick');
     const statusEl = document.getElementById('status');
     const hookInfo = document.getElementById('hookInfo');
-    let hookedName = localStorage.getItem('mlab.trainer.hook') || '';
+    // Shared with the dashboard via localStorage — picking a character in either
+    // window propagates to the other through the 'storage' event.
+    const SHARED_KEY = 'mlab.selectedCharacter';
+    let hookedName = localStorage.getItem(SHARED_KEY) || localStorage.getItem('mlab.trainer.hook') || '';
     let toastTimer;
+
+    window.addEventListener('storage', e => {
+      if (e.key !== SHARED_KEY) return;
+      hookedName = e.newValue || '';
+      if (picker) picker.value = hookedName;
+      updateHookUi();
+      refreshState();
+    });
 
     async function getJson(url) { const r = await fetch(url); return r.json(); }
     function setStatus(s) { statusEl.textContent = s; }
@@ -223,8 +234,13 @@
 
     picker.addEventListener('change', () => {
       hookedName = picker.value;
-      if (hookedName) localStorage.setItem('mlab.trainer.hook', hookedName);
-      else localStorage.removeItem('mlab.trainer.hook');
+      if (hookedName) {
+        localStorage.setItem(SHARED_KEY, hookedName);
+        localStorage.setItem('mlab.trainer.hook', hookedName); // legacy key, keep for one release
+      } else {
+        localStorage.removeItem(SHARED_KEY);
+        localStorage.removeItem('mlab.trainer.hook');
+      }
       updateHookUi();
       refreshState();
     });
