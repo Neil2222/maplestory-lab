@@ -88,6 +88,15 @@
     .char.open .char-body { display:block; }
     .char-stats { margin:6px 0 10px; font-size:12px; }
     .char-grid { display:grid; gap:8px; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+    .items-list { max-height:560px; overflow:auto; border:1px solid var(--line); border-radius:6px; background:#13100d; }
+    .item-row { display:grid; grid-template-columns: 90px 1fr 140px auto; gap:10px; padding:6px 12px; border-bottom:1px solid #20180f; align-items:center; cursor:pointer; }
+    .item-row:hover { background:var(--panel-2); }
+    .item-row:last-child { border-bottom:0; }
+    .item-row .iid { font:12px ui-monospace, Consolas, monospace; color:var(--muted); }
+    .item-row .iname { color:var(--ink); }
+    .item-row .icat { color:var(--muted); font-size:12px; }
+    .item-row .igive { background:transparent; border:1px solid var(--accent-2); color:var(--accent); padding:3px 10px; border-radius:4px; font-size:12px; cursor:pointer; }
+    .item-row .igive:hover { background:var(--accent-2); color:#fff; }
   </style>
 </head>
 <body>
@@ -104,6 +113,7 @@
   <nav class="tabs">
     <button data-tab="players" class="active">Players</button>
     <button data-tab="accounts">Accounts</button>
+    <button data-tab="items">Items</button>
     <button data-tab="world">World</button>
     <button data-tab="server">Server</button>
     <button data-tab="logs">Logs</button>
@@ -205,6 +215,25 @@
         <h2>Accounts &amp; characters <span class="sub">all accounts in the DB, online or not. <button onclick="loadAccounts()" style="margin-left:6px;">Refresh</button></span></h2>
         <input id="acctSearch" placeholder="Filter by account or character name…" style="width:100%; margin-bottom:8px;" oninput="renderAccounts()">
         <div id="accountsList"><div class="empty">Click Refresh to load accounts.</div></div>
+      </div>
+    </section>
+
+    <!-- ITEMS TAB -->
+    <section data-panel="items" class="hidden">
+      <div class="panel">
+        <h2>Item browser <span class="sub" id="itemMeta">…</span></h2>
+        <div class="row" style="margin-bottom:10px;">
+          <input id="itemSearch" placeholder="Search by name or ID…" style="flex:2; min-width:180px;" oninput="renderItems()">
+          <select id="itemCat" onchange="renderItems()" style="flex:1; min-width:140px;">
+            <option value="">All categories</option>
+          </select>
+          <label class="field" style="flex:0 0 100px;">Qty<input id="itemQty" type="number" value="1" min="1" max="32767"></label>
+        </div>
+        <div class="sub" style="margin-bottom:6px;">
+          Click an item to give it to the selected player <b id="itemTarget" class="selectedName none">(no player selected)</b>. Source: <code>Cosmic/handbook/</code> — same IDs the server accepts.
+        </div>
+        <div id="itemsList" class="items-list"><div class="empty">Loading…</div></div>
+        <div class="sub" id="itemsCount" style="margin-top:6px;"></div>
       </div>
     </section>
 
@@ -338,6 +367,8 @@
         document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('active', b === btn));
         document.querySelectorAll('[data-panel]').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== btn.dataset.tab));
         if (btn.dataset.tab === 'accounts' && !accountsCache.length) loadAccounts();
+        if (btn.dataset.tab === 'items' && !itemsCache) loadItems();
+        if (btn.dataset.tab === 'items' && itemsCache) renderItems(); // refresh the "give to" target if it changed
       };
     });
 
@@ -631,6 +662,69 @@
     function setCharGm(cid) {
       const level = num('gm_' + cid);
       post({ action:'setGmLevel', charId: cid, level }).then(loadAccounts);
+    }
+
+    // --- items tab ---
+    let itemsCache = null;
+    let categoriesBuilt = false;
+    async function loadItems() {
+      const list = document.getElementById('itemsList');
+      list.innerHTML = '<div class="empty">Loading…</div>';
+      try {
+        itemsCache = await getJson('/api/items');
+        document.getElementById('itemMeta').textContent = itemsCache.length + ' items loaded';
+        if (!categoriesBuilt) {
+          const cats = Array.from(new Set(itemsCache.map(i => i.cat))).sort();
+          const sel = document.getElementById('itemCat');
+          for (const c of cats) {
+            const opt = document.createElement('option');
+            opt.value = c; opt.textContent = c;
+            sel.appendChild(opt);
+          }
+          categoriesBuilt = true;
+        }
+        renderItems();
+      } catch (e) {
+        list.innerHTML = '<div class="empty">Failed to load: ' + e.message + '</div>';
+      }
+    }
+    function renderItems() {
+      if (!itemsCache) return;
+      const q = (document.getElementById('itemSearch').value || '').toLowerCase().trim();
+      const cat = document.getElementById('itemCat').value;
+      let filtered = itemsCache;
+      if (cat) filtered = filtered.filter(i => i.cat === cat);
+      if (q) {
+        // Numeric query searches by id prefix; word query searches name (case-insensitive).
+        if (/^\d+$/.test(q)) {
+          filtered = filtered.filter(i => String(i.id).startsWith(q));
+        } else {
+          filtered = filtered.filter(i => i.name.toLowerCase().includes(q));
+        }
+      }
+      const total = filtered.length;
+      const shown = filtered.slice(0, 300);
+      const list = document.getElementById('itemsList');
+      if (!shown.length) { list.innerHTML = '<div class="empty">No matches.</div>'; }
+      else {
+        list.innerHTML = shown.map(i =>
+          `<div class="item-row" onclick="giveItem(${i.id})">
+             <span class="iid">${i.id}</span>
+             <span class="iname">${escapeHtml(i.name)}</span>
+             <span class="icat">${escapeHtml(i.cat)}</span>
+             <button class="igive" onclick="event.stopPropagation(); giveItem(${i.id})">Give</button>
+           </div>`).join('');
+      }
+      document.getElementById('itemsCount').textContent =
+        total === shown.length ? `Showing all ${total} matches` : `Showing first ${shown.length} of ${total} matches — narrow your search to see more`;
+      const t = document.getElementById('itemTarget');
+      if (selected) { t.textContent = selected; t.classList.remove('none'); }
+      else { t.textContent = '(no player selected)'; t.classList.add('none'); }
+    }
+    function giveItem(itemId) {
+      if (!selected) { toast('Select a player on the Players tab first.', true); return; }
+      const qty = Math.max(1, num('itemQty'));
+      post({ action:'item', name: selected, itemId, quantity: qty });
     }
 
     // --- bootstrap ---

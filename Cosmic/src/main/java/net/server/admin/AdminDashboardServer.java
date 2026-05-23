@@ -51,6 +51,7 @@ public class AdminDashboardServer {
         server.createContext("/api/logs", this::handleLogs);
         server.createContext("/api/commands", this::handleCommands);
         server.createContext("/api/accounts", this::handleAccounts);
+        server.createContext("/api/items", this::handleItems);
         server.createContext("/trainer", this::handleTrainerPage);
         server.createContext("/api/trainer/state", this::handleTrainerState);
         server.createContext("/api/trainer/toggle", this::handleTrainerToggle);
@@ -219,6 +220,23 @@ public class AdminDashboardServer {
         } catch (IllegalArgumentException ex) {
             sendJson(exchange, 400, "{\"ok\":false,\"message\":\"Unknown cheat: " + json(cheatName) + "\"}");
         }
+    }
+
+    private void handleItems(HttpExchange exchange) throws IOException {
+        List<ItemHandbook.Item> items = ItemHandbook.load();
+        // ~24k items — keep payload lean by skipping descriptions in the list response.
+        StringBuilder sb = new StringBuilder(items.size() * 60);
+        sb.append('[');
+        boolean first = true;
+        for (ItemHandbook.Item it : items) {
+            if (!first) sb.append(',');
+            first = false;
+            sb.append("{\"id\":").append(it.id())
+              .append(",\"name\":\"").append(json(it.name())).append("\"")
+              .append(",\"cat\":\"").append(json(it.category())).append("\"}");
+        }
+        sb.append(']');
+        sendJson(exchange, 200, sb.toString());
     }
 
     private void handleAccounts(HttpExchange exchange) throws IOException {
