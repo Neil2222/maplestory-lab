@@ -3,7 +3,11 @@ package net.server.admin;
 import client.Character;
 import client.Client;
 import client.command.CommandsExecutor;
+import client.inventory.Inventory;
+import client.inventory.InventoryType;
+import client.inventory.Item;
 import client.inventory.manipulator.InventoryManipulator;
+import server.ItemInformationProvider;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import constants.game.GameConstants;
@@ -416,6 +420,22 @@ public class AdminDashboardServer {
         sendJson(exchange, 200, "[" + String.join(",", rows) + "]");
     }
 
+    /** Builds a JSON array of the character's equipped items: [{slot, itemId, name}]. */
+    private String buildEquippedJson(Character player) {
+        Inventory equipped = player.getInventory(InventoryType.EQUIPPED);
+        if (equipped == null) return "[]";
+        ItemInformationProvider iip = ItemInformationProvider.getInstance();
+        List<String> rows = new ArrayList<>();
+        for (Item it : equipped.list()) {
+            int itemId = it.getItemId();
+            String name = iip.getName(itemId);
+            rows.add("{\"slot\":" + it.getPosition()
+                    + ",\"itemId\":" + itemId
+                    + ",\"name\":\"" + json(name == null ? "" : name) + "\"}");
+        }
+        return "[" + String.join(",", rows) + "]";
+    }
+
     private Character findOnlineByName(String name) {
         for (World world : Server.getInstance().getWorlds()) {
             Character chr = world.getPlayerStorage().getCharacterByName(name);
@@ -479,7 +499,8 @@ public class AdminDashboardServer {
                     + "\"sp\":" + player.getRemainingSp() + ","
                     + "\"fame\":" + player.getFame() + ","
                     + "\"exp\":" + player.getExp() + ","
-                    + "\"godmode\":" + player.isLocalGodMode()
+                    + "\"godmode\":" + player.isLocalGodMode() + ","
+                    + "\"equipped\":" + buildEquippedJson(player)
                     + "}");
         }
         sendJson(exchange, 200, "[" + String.join(",", players) + "]");

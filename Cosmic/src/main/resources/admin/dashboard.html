@@ -123,6 +123,13 @@
     .sidebar .sb-give input { font-size:12px; padding:5px 8px; }
     .sidebar .sb-give button { font-size:12px; padding:5px 10px; }
     .sidebar .sb-empty { color:var(--muted); font-size:13px; padding:24px 0; text-align:center; }
+    .sb-equipped { display:flex; flex-direction:column; gap:4px; margin-top:8px; font-size:12px; }
+    .sb-equipped .eq-row { display:flex; align-items:center; gap:6px; }
+    .sb-equipped .eq-icon { width:20px; height:20px; flex:0 0 20px; image-rendering:pixelated; background:#0d0a07; border:1px solid #2a200f; border-radius:2px; object-fit:contain; }
+    .sb-equipped .eq-icon.fallback { display:flex; align-items:center; justify-content:center; font-size:8px; color:var(--muted); }
+    .sb-equipped .eq-slot { color:var(--muted); flex:0 0 60px; font-size:11px; }
+    .sb-equipped .eq-name { color:var(--ink); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .sb-equipped .eq-empty { color:var(--muted); font-size:12px; font-style:italic; padding:8px 0; }
     nav.subtabs { display:flex; gap:2px; margin-bottom:12px; border-bottom:1px solid var(--line); padding-bottom:0; }
     nav.subtabs button { background:transparent; color:var(--muted); border:0; border-bottom:2px solid transparent; padding:8px 14px; font:inherit; cursor:pointer; }
     nav.subtabs button:hover { color:var(--ink); }
@@ -166,6 +173,9 @@
 
           <h3 class="sb-section">Stats</h3>
           <div class="sb-stats" id="sbStats"></div>
+
+          <h3 class="sb-section">Equipped</h3>
+          <div class="sb-equipped" id="sbEquipped"></div>
 
           <h3 class="sb-section">Quick actions</h3>
           <div class="sb-actions">
@@ -594,7 +604,49 @@
         ['Meso', fmt.format(p.meso)], ['Account', p.account]
       ].map(([k, v]) => `<span class="k">${k}</span><span class="v">${v}</span>`).join('');
 
+      renderEquipped(p.equipped || []);
       renderStatsPanel(p);
+    }
+
+    // Slot labels in display order. Negative position numbers are regular equip
+    // slots; cash equips use slot - 100 (so -1 has a cash twin at -101).
+    const EQUIP_SLOT_LABEL = {
+      '-1':'Cap', '-2':'Face', '-3':'Eye', '-4':'Earring',
+      '-5':'Top', '-6':'Pants', '-7':'Shoes', '-8':'Glove',
+      '-9':'Cape', '-10':'Shield', '-11':'Weapon',
+      '-12':'Ring 1', '-13':'Ring 2', '-14':'Ring 3', '-15':'Ring 4',
+      '-16':'Pendant', '-17':'Belt', '-18':'Medal', '-19':'Pet',
+      '-49':'Medal'
+    };
+    function slotLabel(slot) {
+      const direct = EQUIP_SLOT_LABEL[String(slot)];
+      if (direct) return direct;
+      if (slot <= -101 && slot >= -119) {
+        const base = EQUIP_SLOT_LABEL[String(slot + 100)];
+        return base ? (base + ' (cash)') : ('Cash ' + (slot + 100));
+      }
+      return 'Slot ' + slot;
+    }
+    function renderEquipped(list) {
+      const el = document.getElementById('sbEquipped');
+      if (!list.length) {
+        el.innerHTML = '<div class="eq-empty">Nothing equipped.</div>';
+        return;
+      }
+      // Sort by slot — negatives ascending (so -1 Cap first, -11 Weapon mid), cash slots after.
+      const sorted = list.slice().sort((a, b) => {
+        const ka = a.slot > -100 ? a.slot : (a.slot + 1000);
+        const kb = b.slot > -100 ? b.slot : (b.slot + 1000);
+        return kb - ka;
+      });
+      el.innerHTML = sorted.map(e =>
+        `<div class="eq-row">
+          <img class="eq-icon" src="/api/icon/${e.itemId}.png" alt="" loading="lazy" decoding="async"
+               onerror="this.outerHTML='<div class=\\'eq-icon fallback\\'>'+${e.itemId}.toString().slice(0,3)+'</div>'">
+          <span class="eq-slot">${escapeHtml(slotLabel(e.slot))}</span>
+          <span class="eq-name" title="${escapeHtml(e.name)} (#${e.itemId})">${escapeHtml(e.name || ('#' + e.itemId))}</span>
+        </div>`
+      ).join('');
     }
     // Kept around because external code/older callbacks call renderPlayers; route them to the new renderer.
     const renderPlayers = renderSidebar;
