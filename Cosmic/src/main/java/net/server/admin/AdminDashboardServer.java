@@ -139,12 +139,23 @@ public class AdminDashboardServer {
                     + "\"account\":\"" + json(player.getClient().getAccountName()) + "\","
                     + "\"level\":" + player.getLevel() + ","
                     + "\"job\":\"" + json(player.getJob().name()) + "\","
+                    + "\"jobId\":" + player.getJob().getId() + ","
                     + "\"map\":" + player.getMapId() + ","
                     + "\"world\":" + player.getWorld() + ","
                     + "\"channel\":" + player.getClient().getChannel() + ","
                     + "\"gm\":" + player.gmLevel() + ","
                     + "\"meso\":" + player.getMeso() + ","
                     + "\"nx\":" + cashShop.getCash(CashShop.NX_PREPAID) + ","
+                    + "\"str\":" + player.getStr() + ","
+                    + "\"dex\":" + player.getDex() + ","
+                    + "\"int\":" + player.getInt() + ","
+                    + "\"luk\":" + player.getLuk() + ","
+                    + "\"maxHp\":" + player.getClientMaxHp() + ","
+                    + "\"maxMp\":" + player.getClientMaxMp() + ","
+                    + "\"ap\":" + player.getRemainingAp() + ","
+                    + "\"sp\":" + player.getRemainingSp() + ","
+                    + "\"fame\":" + player.getFame() + ","
+                    + "\"exp\":" + player.getExp() + ","
                     + "\"godmode\":" + player.isLocalGodMode()
                     + "}");
         }
