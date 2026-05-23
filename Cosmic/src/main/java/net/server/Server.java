@@ -886,7 +886,10 @@ public class Server {
 
         TimeZone.setDefault(TimeZone.getTimeZone(YamlConfig.config.server.TIMEZONE));
 
-        final int worldCount = Math.min(GameConstants.WORLD_NAMES.length, YamlConfig.config.server.WORLDS);
+        // Lab: persistent runtime overrides (per-world rates, world count) — see LabOverrides.
+        net.server.admin.LabOverrides.load();
+        final int desiredWorldCount = net.server.admin.LabOverrides.getWorldCountOverride(YamlConfig.config.server.WORLDS);
+        final int worldCount = Math.min(GameConstants.WORLD_NAMES.length, desiredWorldCount);
         try (Connection con = DatabaseConnection.getConnection()) {
             setAllLoggedOut(con);
             setAllMerchantsInactive(con);
@@ -946,6 +949,8 @@ public class Server {
         CommandsExecutor.getInstance();
         AdminDashboardServer.start();
         log.info("Admin dashboard listening on http://127.0.0.1:8787");
+
+        net.server.admin.LabOverrides.applyToLiveWorlds();
 
         for (Channel ch : this.getAllChannels()) {
             ch.reloadEventScriptManager();

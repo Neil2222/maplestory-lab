@@ -207,6 +207,15 @@
       </div>
 
       <div class="panel">
+        <h2>Active worlds <span class="sub">persisted in lab-overrides.properties next to config.yaml</span></h2>
+        <div class="row">
+          <label class="field" style="flex:0 0 140px;">Total worlds<input id="worldCount" type="number" min="1" max="21"></label>
+          <button class="primary" onclick="post({action:'setWorldCount', count: num('worldCount')})">Apply</button>
+          <span class="sub" style="color:var(--muted); font-size:12px;">Range 1-21 (Scania … Medere). Adding spawns the worlds live; rates and flags persist across restarts.</span>
+        </div>
+      </div>
+
+      <div class="panel">
         <h2>Worlds <span class="sub">per-world rates &amp; flag. Names come from the client and can't be changed server-side.</span></h2>
         <div id="worldsList"><div class="empty">…</div></div>
       </div>
@@ -413,6 +422,8 @@
       else { el.textContent = 'no player selected'; el.classList.add('none'); }
     }
     function renderWorlds(worlds) {
+      const wcInput = document.getElementById('worldCount');
+      if (wcInput && !wcInput.value) wcInput.value = worlds.length;
       const list = document.getElementById('worldsList');
       if (!worlds.length) { list.innerHTML = '<div class="empty">No worlds</div>'; return; }
       list.innerHTML = worlds.map(w => `

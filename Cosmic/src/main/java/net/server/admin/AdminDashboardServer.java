@@ -238,12 +238,12 @@ public class AdminDashboardServer {
                         targets = List.of(w);
                     }
                     for (World world : targets) {
-                        if (exp > 0) world.setExpRate(exp);
-                        if (drop > 0) world.setDropRate(drop);
-                        if (meso > 0) world.setMesoRate(meso);
+                        if (exp > 0)  { world.setExpRate(exp);  LabOverrides.setWorldRate(world.getId(), "exp_rate",  exp); }
+                        if (drop > 0) { world.setDropRate(drop); LabOverrides.setWorldRate(world.getId(), "drop_rate", drop); }
+                        if (meso > 0) { world.setMesoRate(meso); LabOverrides.setWorldRate(world.getId(), "meso_rate", meso); }
                     }
                     String scope = worldIdStr.isEmpty() ? "all worlds" : ("world " + worldIdStr);
-                    sendOk(exchange, "Rates updated for " + scope + ".");
+                    sendOk(exchange, "Rates updated for " + scope + " (persisted to lab-overrides).");
                 }
                 case "setFlag" -> {
                     int wid = Integer.parseInt(body.getOrDefault("worldId", "-1"));
@@ -253,7 +253,28 @@ public class AdminDashboardServer {
                         throw new IllegalArgumentException("World " + wid + " does not exist.");
                     }
                     w.setFlag((byte) flag);
-                    sendOk(exchange, "World " + wid + " flag set to " + flag + " (Event/New/Hot icon).");
+                    LabOverrides.setWorldFlag(wid, flag);
+                    sendOk(exchange, "World " + wid + " flag set to " + flag + " (persisted).");
+                }
+                case "setWorldCount" -> {
+                    int n = Integer.parseInt(body.getOrDefault("count", "0"));
+                    int maxAllowed = GameConstants.WORLD_NAMES.length;
+                    if (n < 1 || n > maxAllowed) {
+                        throw new IllegalArgumentException("World count must be between 1 and " + maxAllowed + ".");
+                    }
+                    int current = Server.getInstance().getWorlds().size();
+                    LabOverrides.setWorldCount(n);
+                    if (n > current) {
+                        // Spawn the missing worlds now so they show up without a restart.
+                        for (int i = current; i < n; i++) {
+                            Server.getInstance().addWorld();
+                        }
+                        sendOk(exchange, "World count set to " + n + ". Added " + (n - current) + " world(s) live; persisted to lab-overrides.");
+                    } else if (n < current) {
+                        sendOk(exchange, "World count target set to " + n + " (persisted). Active worlds will adjust on next restart — Cosmic doesn't support live world removal.");
+                    } else {
+                        sendOk(exchange, "World count already at " + n + ". Persisted to lab-overrides.");
+                    }
                 }
                 case "notice" -> {
                     String message = body.getOrDefault("message", "").trim();

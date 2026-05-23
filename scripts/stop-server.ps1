@@ -17,11 +17,23 @@ if ($null -eq $resolved) {
 $dashboardListening = Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 8787 -State Listen -ErrorAction SilentlyContinue
 if ($null -ne $dashboardListening) {
     Write-Host "Requesting graceful shutdown via dashboard (127.0.0.1:8787)..."
+    $httpReachedServer = $false
     try {
+        # Longer timeout: handler does saveCharToDB synchronously for every online char,
+        # which can take a few seconds with many players. We still need to wait on port
+        # close afterwards, so this is just the time to receive the OK response.
         $response = Invoke-WebRequest -UseBasicParsing -Method POST -Uri 'http://127.0.0.1:8787/api/action' `
-            -ContentType 'application/json' -Body '{"action":"shutdown"}' -TimeoutSec 5
+            -ContentType 'application/json' -Body '{"action":"shutdown"}' -TimeoutSec 20
         Write-Host "  $($response.Content)"
+        $httpReachedServer = $true
+    } catch {
+        Write-Warning "Graceful shutdown HTTP call did not return cleanly: $($_.Exception.Message)"
+        # The save may still have run server-side even if the response was slow/lost.
+        # Wait on port-close anyway before force-killing.
+        $httpReachedServer = $true
+    }
 
+    if ($httpReachedServer) {
         $deadline = (Get-Date).AddSeconds($GracefulTimeoutSec)
         while ((Get-Date) -lt $deadline) {
             $loginStillUp = Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 8484 -State Listen -ErrorAction SilentlyContinue
@@ -31,8 +43,6 @@ if ($null -ne $dashboardListening) {
             }
             Start-Sleep -Milliseconds 500
         }
-    } catch {
-        Write-Warning "Graceful shutdown call failed: $($_.Exception.Message). Falling back to force-kill."
     }
 }
 
