@@ -157,7 +157,7 @@ public class AdminDashboardServer {
                 }
             }
             try (PreparedStatement ps = con.prepareStatement(
-                    "SELECT id, accountid, world, name, level, exp, str, dex, `int`, luk, maxhp, maxmp, meso, job, fame, ap, gm, map FROM characters ORDER BY accountid, id");
+                    "SELECT id, accountid, world, name, level, exp, str, dex, `int`, luk, maxhp, maxmp, meso, job, fame, ap, sp, gm, map FROM characters ORDER BY accountid, id");
                  ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     int accId = rs.getInt("accountid");
@@ -165,12 +165,22 @@ public class AdminDashboardServer {
                     if (bucket == null) continue;
                     int charId = rs.getInt("id");
                     String name = rs.getString("name");
+                    int jobId = rs.getInt("job");
+                    int spForCurrentBook = 0;
+                    String spCsv = rs.getString("sp");
+                    if (spCsv != null && !spCsv.isBlank()) {
+                        int book = constants.game.GameConstants.getSkillBook(jobId);
+                        String[] parts = spCsv.split(",");
+                        if (book >= 0 && book < parts.length) {
+                            try { spForCurrentBook = Integer.parseInt(parts[book].trim()); } catch (NumberFormatException ignored) {}
+                        }
+                    }
                     bucket.add("{"
                             + "\"id\":" + charId + ","
                             + "\"name\":\"" + json(name) + "\","
                             + "\"world\":" + rs.getInt("world") + ","
                             + "\"level\":" + rs.getInt("level") + ","
-                            + "\"job\":" + rs.getInt("job") + ","
+                            + "\"job\":" + jobId + ","
                             + "\"exp\":" + rs.getInt("exp") + ","
                             + "\"str\":" + rs.getInt("str") + ","
                             + "\"dex\":" + rs.getInt("dex") + ","
@@ -181,6 +191,7 @@ public class AdminDashboardServer {
                             + "\"meso\":" + rs.getInt("meso") + ","
                             + "\"fame\":" + rs.getInt("fame") + ","
                             + "\"ap\":" + rs.getInt("ap") + ","
+                            + "\"sp\":" + spForCurrentBook + ","
                             + "\"gm\":" + rs.getInt("gm") + ","
                             + "\"map\":" + rs.getInt("map") + ","
                             + "\"online\":" + (findOnlineByName(name) != null)
@@ -439,8 +450,9 @@ public class AdminDashboardServer {
                     int charId = Integer.parseInt(body.getOrDefault("charId", "0"));
                     String col = body.getOrDefault("stat", "").toLowerCase();
                     int value = Integer.parseInt(body.getOrDefault("value", "0"));
-                    if (!OFFLINE_STAT_COLS.contains(col)) {
-                        throw new IllegalArgumentException("Stat must be one of " + OFFLINE_STAT_COLS);
+                    boolean isSp = col.equals("sp");
+                    if (!isSp && !OFFLINE_STAT_COLS.contains(col)) {
+                        throw new IllegalArgumentException("Stat must be one of " + OFFLINE_STAT_COLS + " or 'sp'.");
                     }
                     DbCharRef ref = loadDbChar(charId);
                     if (ref == null) {
@@ -449,16 +461,54 @@ public class AdminDashboardServer {
                     if (findOnlineByName(ref.name) != null) {
                         throw new IllegalStateException("Character '" + ref.name + "' is online. Use the Players tab for live edits.");
                     }
-                    try (Connection con = DatabaseConnection.getConnection();
-                         PreparedStatement up = con.prepareStatement("UPDATE characters SET `" + col + "` = ? WHERE id = ?")) {
-                        up.setInt(1, value);
-                        up.setInt(2, charId);
-                        int affected = up.executeUpdate();
-                        if (affected == 0) throw new IllegalStateException("No row updated.");
-                    } catch (SQLException ex) {
-                        throw new IllegalStateException("DB error: " + ex.getMessage());
+                    if (isSp) {
+                        // SP is stored as a CSV per skillbook. Update the slot corresponding to the
+                        // character's current job, preserve the rest, write the CSV back.
+                        try (Connection con = DatabaseConnection.getConnection()) {
+                            int jobId;
+                            String csv;
+                            try (PreparedStatement read = con.prepareStatement("SELECT job, sp FROM characters WHERE id = ?")) {
+                                read.setInt(1, charId);
+                                try (ResultSet rs = read.executeQuery()) {
+                                    if (!rs.next()) throw new IllegalArgumentException("Character not found.");
+                                    jobId = rs.getInt("job");
+                                    csv = rs.getString("sp");
+                                }
+                            }
+                            int book = constants.game.GameConstants.getSkillBook(jobId);
+                            String[] parts = csv == null || csv.isBlank() ? new String[]{} : csv.split(",");
+                            int len = Math.max(parts.length, book + 1);
+                            int[] arr = new int[len];
+                            for (int i = 0; i < parts.length; i++) {
+                                try { arr[i] = Integer.parseInt(parts[i].trim()); } catch (NumberFormatException ignored) {}
+                            }
+                            arr[book] = Math.max(0, value);
+                            StringBuilder sb = new StringBuilder();
+                            for (int i = 0; i < arr.length; i++) {
+                                if (i > 0) sb.append(',');
+                                sb.append(arr[i]);
+                            }
+                            try (PreparedStatement up = con.prepareStatement("UPDATE characters SET sp = ? WHERE id = ?")) {
+                                up.setString(1, sb.toString());
+                                up.setInt(2, charId);
+                                up.executeUpdate();
+                            }
+                            sendOk(exchange, "Set SP[book " + book + "] = " + value + " on character " + charId + " (" + ref.name + "). Full SP CSV is now " + sb + ".");
+                        } catch (SQLException ex) {
+                            throw new IllegalStateException("DB error: " + ex.getMessage());
+                        }
+                    } else {
+                        try (Connection con = DatabaseConnection.getConnection();
+                             PreparedStatement up = con.prepareStatement("UPDATE characters SET `" + col + "` = ? WHERE id = ?")) {
+                            up.setInt(1, value);
+                            up.setInt(2, charId);
+                            int affected = up.executeUpdate();
+                            if (affected == 0) throw new IllegalStateException("No row updated.");
+                        } catch (SQLException ex) {
+                            throw new IllegalStateException("DB error: " + ex.getMessage());
+                        }
+                        sendOk(exchange, "Set " + col + " = " + value + " on character " + charId + " (" + ref.name + ").");
                     }
-                    sendOk(exchange, "Set " + col + " = " + value + " on character " + charId + " (" + ref.name + ").");
                 }
                 case "setWorldCount" -> {
                     int n = Integer.parseInt(body.getOrDefault("count", "0"));

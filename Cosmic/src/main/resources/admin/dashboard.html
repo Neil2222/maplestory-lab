@@ -162,6 +162,7 @@
             <label class="field">Max HP<div class="row compact"><input id="setMaxHp" type="number"><button onclick="setAttr('maxhp','setMaxHp')">Set</button></div></label>
             <label class="field">Max MP<div class="row compact"><input id="setMaxMp" type="number"><button onclick="setAttr('maxmp','setMaxMp')">Set</button></div></label>
             <label class="field">AP available<div class="row compact"><input id="setAp" type="number"><button onclick="setAttr('ap','setAp')">Set</button></div></label>
+            <label class="field">SP available <span class="sub">current job book</span><div class="row compact"><input id="setSp" type="number"><button onclick="setAttr('sp','setSp')">Set</button></div></label>
             <label class="field">Fame<div class="row compact"><input id="setFame" type="number"><button onclick="setAttr('fame','setFame')">Set</button></div></label>
           </div>
           <div class="row" style="margin-top:10px;">
@@ -446,6 +447,7 @@
       seed('setMaxHp', p.maxHp);
       seed('setMaxMp', p.maxMp);
       seed('setAp', p.ap);
+      seed('setSp', p.sp);
       seed('setFame', p.fame);
     }
     function renderSelected() {
@@ -581,7 +583,7 @@
           </div>
           <div class="char-body">
             <div class="char-stats sub">
-              STR ${c.str} · DEX ${c.dex} · INT ${c.int} · LUK ${c.luk} · HP ${c.maxhp} · MP ${c.maxmp} · AP ${c.ap} · Fame ${c.fame} · Meso ${fmt.format(c.meso)}
+              STR ${c.str} · DEX ${c.dex} · INT ${c.int} · LUK ${c.luk} · HP ${c.maxhp} · MP ${c.maxmp} · AP ${c.ap} · SP ${c.sp} · Fame ${c.fame} · Meso ${fmt.format(c.meso)}
             </div>
             <div class="char-grid">
               ${offlineField(c.id,'level',c.level,disabled)}
@@ -593,6 +595,7 @@
               ${offlineField(c.id,'maxhp',c.maxhp,disabled)}
               ${offlineField(c.id,'maxmp',c.maxmp,disabled)}
               ${offlineField(c.id,'ap',c.ap,disabled)}
+              ${offlineField(c.id,'sp',c.sp,disabled)}
               ${offlineField(c.id,'fame',c.fame,disabled)}
               ${offlineField(c.id,'meso',c.meso,disabled)}
             </div>

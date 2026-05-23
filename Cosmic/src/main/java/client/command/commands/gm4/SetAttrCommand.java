@@ -41,8 +41,9 @@ public class SetAttrCommand extends Command {
                 player.updateSingleStat(Stat.FAME, value);
             }
             case "ap" -> player.changeRemainingAp(Math.max(0, value), false);
+            case "sp" -> player.updateRemainingSp(Math.max(0, value));
             default -> {
-                player.yellowMessage("Unknown attribute: " + attr + ". Use str, dex, int, luk, maxhp, maxmp, fame, or ap.");
+                player.yellowMessage("Unknown attribute: " + attr + ". Use str, dex, int, luk, maxhp, maxmp, fame, ap, or sp.");
                 return;
             }
         }
