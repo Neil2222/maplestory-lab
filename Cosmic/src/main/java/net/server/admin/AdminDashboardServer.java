@@ -54,6 +54,7 @@ public class AdminDashboardServer {
         server.createContext("/trainer", this::handleTrainerPage);
         server.createContext("/api/trainer/state", this::handleTrainerState);
         server.createContext("/api/trainer/toggle", this::handleTrainerToggle);
+        server.createContext("/api/trainer/offset", this::handleTrainerOffset);
         server.setExecutor(Executors.newSingleThreadExecutor(r -> {
             Thread thread = new Thread(r, "AdminDashboard");
             thread.setDaemon(true);
@@ -167,9 +168,34 @@ public class AdminDashboardServer {
         for (Map.Entry<String, Set<TrainerEngine.Cheat>> e : snap.entrySet()) {
             List<String> cs = new ArrayList<>();
             for (TrainerEngine.Cheat c : e.getValue()) cs.add("\"" + c.name() + "\"");
-            rows.add("\"" + json(e.getKey()) + "\":[" + String.join(",", cs) + "]");
+            String name = e.getKey();
+            rows.add("\"" + json(name) + "\":{\"cheats\":[" + String.join(",", cs) + "],\"vacOffset\":" + TrainerEngine.getVacOffset(name) + "}");
         }
         sendJson(exchange, 200, "{" + String.join(",", rows) + "}");
+    }
+
+    private void handleTrainerOffset(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendJson(exchange, 405, "{\"ok\":false,\"message\":\"Method not allowed\"}");
+            return;
+        }
+        Map<String, String> body = parseJson(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+        String name = body.getOrDefault("name", "").trim();
+        if (name.isEmpty()) {
+            sendJson(exchange, 400, "{\"ok\":false,\"message\":\"name is required\"}");
+            return;
+        }
+        int offset;
+        try {
+            offset = Integer.parseInt(body.getOrDefault("offset", "0"));
+        } catch (NumberFormatException e) {
+            sendJson(exchange, 400, "{\"ok\":false,\"message\":\"offset must be an integer\"}");
+            return;
+        }
+        // Cap to a sensible range — beyond a few hundred px the mobs land off-screen.
+        int clamped = Math.max(-500, Math.min(500, offset));
+        TrainerEngine.setVacOffset(name, clamped);
+        sendJson(exchange, 200, "{\"ok\":true,\"message\":\"Mob Vac offset for " + json(name) + " set to " + clamped + "px.\"}");
     }
 
     private void handleTrainerToggle(HttpExchange exchange) throws IOException {

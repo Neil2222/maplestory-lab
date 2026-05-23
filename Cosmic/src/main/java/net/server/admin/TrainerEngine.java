@@ -1,10 +1,12 @@
 package net.server.admin;
 
+import client.BuffStat;
 import client.Character;
 import client.inventory.Pet;
 import client.inventory.manipulator.InventoryManipulator;
 import constants.id.ItemId;
 import constants.id.MobId;
+import constants.skills.Hero;
 import net.server.Server;
 import net.server.world.World;
 import org.slf4j.Logger;
@@ -15,9 +17,11 @@ import server.maps.MapObject;
 import server.maps.MapObjectType;
 import server.maps.MapleMap;
 import tools.PacketCreator;
+import tools.Pair;
 
 import java.awt.Point;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -37,9 +41,10 @@ public final class TrainerEngine {
     private static final Logger log = LoggerFactory.getLogger(TrainerEngine.class);
     private static final long TICK_MS = 300L;
 
-    public enum Cheat { MOB_VAC, AUTO_LOOT, KILL_ALL, GODMODE, HEAL_TICK }
+    public enum Cheat { MOB_VAC, AUTO_LOOT, KILL_ALL, GODMODE, HEAL_TICK, NO_KNOCKBACK }
 
     private static final Map<String, Set<Cheat>> active = new ConcurrentHashMap<>();
+    private static final Map<String, Integer> vacOffset = new ConcurrentHashMap<>();
     private static ScheduledExecutorService scheduler;
 
     private TrainerEngine() {}
@@ -56,24 +61,31 @@ public final class TrainerEngine {
     }
 
     public static synchronized void setCheat(String name, Cheat cheat, boolean enabled) {
+        Character chr = findOnline(name);
         if (enabled) {
             active.computeIfAbsent(name, k -> EnumSet.noneOf(Cheat.class)).add(cheat);
-            // GODMODE is sticky, not tick-driven — apply immediately so the toggle is consistent.
-            if (cheat == Cheat.GODMODE) {
-                Character chr = findOnline(name);
-                if (chr != null) chr.setLocalGodMode(true);
-            }
+            // Sticky toggles applied immediately so the trainer state is consistent.
+            if (cheat == Cheat.GODMODE && chr != null) chr.setLocalGodMode(true);
+            if (cheat == Cheat.NO_KNOCKBACK && chr != null) applyStanceBuff(chr);
         } else {
             Set<Cheat> set = active.get(name);
             if (set != null) {
                 set.remove(cheat);
-                if (set.isEmpty()) active.remove(name);
+                if (set.isEmpty() && vacOffset.get(name) == null) active.remove(name);
             }
-            if (cheat == Cheat.GODMODE) {
-                Character chr = findOnline(name);
-                if (chr != null) chr.setLocalGodMode(false);
-            }
+            if (cheat == Cheat.GODMODE && chr != null) chr.setLocalGodMode(false);
+            if (cheat == Cheat.NO_KNOCKBACK && chr != null) chr.cancelBuffStats(BuffStat.STANCE);
         }
+    }
+
+    public static synchronized void setVacOffset(String name, int offset) {
+        vacOffset.put(name, offset);
+        // Make sure there's an entry in active so getActive sees this character.
+        active.computeIfAbsent(name, k -> EnumSet.noneOf(Cheat.class));
+    }
+
+    public static int getVacOffset(String name) {
+        return vacOffset.getOrDefault(name, 0);
     }
 
     public static Map<String, Set<Cheat>> snapshot() {
@@ -100,10 +112,11 @@ public final class TrainerEngine {
                 Set<Cheat> cheats = e.getValue();
                 // Order matters: vac before kill so mobs end up where the player is,
                 // then loot after kill so drops are scooped up the same tick.
-                if (cheats.contains(Cheat.MOB_VAC))   doMobVac(chr);
-                if (cheats.contains(Cheat.KILL_ALL))  doKillAll(chr);
-                if (cheats.contains(Cheat.AUTO_LOOT)) doAutoLoot(chr);
-                if (cheats.contains(Cheat.HEAL_TICK)) doHealTick(chr);
+                if (cheats.contains(Cheat.MOB_VAC))      doMobVac(chr);
+                if (cheats.contains(Cheat.KILL_ALL))     doKillAll(chr);
+                if (cheats.contains(Cheat.AUTO_LOOT))    doAutoLoot(chr);
+                if (cheats.contains(Cheat.HEAL_TICK))    doHealTick(chr);
+                if (cheats.contains(Cheat.NO_KNOCKBACK)) applyStanceBuff(chr); // re-applies buff so it never expires
             }
         } catch (Throwable t) {
             log.warn("Trainer tick threw", t);
@@ -127,7 +140,9 @@ public final class TrainerEngine {
         try {
             MapleMap map = player.getMap();
             if (map == null) return;
-            Point target = map.getGroundBelow(player.getPosition());
+            Point ground = map.getGroundBelow(player.getPosition());
+            int offset = getVacOffset(player.getName());
+            Point target = new Point(ground.x + offset, ground.y);
             List<MapObject> monsters = map.getMapObjectsInRange(
                     player.getPosition(), Double.POSITIVE_INFINITY,
                     Arrays.asList(MapObjectType.MONSTER));
@@ -137,6 +152,23 @@ public final class TrainerEngine {
                     m.resetMobPosition(new Point(target));
                 }
             }
+        } catch (Exception ignored) {}
+    }
+
+    /**
+     * Sets BuffStat.STANCE = 100 (100% knockback resist) on the player and notifies the
+     * client with a giveBuff packet. Cosmic's stance check is value-based, so the buff
+     * is effective regardless of which skill id we attribute it to. We pick Hero.STANCE
+     * since it's the canonical Stance skill — the client will recognise it. Duration is
+     * a few seconds so it survives until the next tick refreshes it; cancelling the
+     * cheat removes it cleanly.
+     */
+    private static void applyStanceBuff(Character player) {
+        try {
+            player.setBuffedValue(BuffStat.STANCE, 100);
+            List<Pair<BuffStat, Integer>> stat = Collections.singletonList(new Pair<>(BuffStat.STANCE, 100));
+            // 5s buff duration — comfortably longer than TICK_MS so it never lapses while active.
+            player.sendPacket(PacketCreator.giveBuff(Hero.STANCE, 5000, stat));
         } catch (Exception ignored) {}
     }
 

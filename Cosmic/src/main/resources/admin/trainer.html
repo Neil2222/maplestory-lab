@@ -45,6 +45,12 @@
     .cheat.on .indicator { background:#3a1f0c; border-color:var(--hot); }
     .cheat.on .indicator::after { left:18px; background:var(--hot); }
     .cheat.disabled { opacity:0.45; cursor:not-allowed; }
+    .offset-row { display:flex; align-items:center; gap:8px; margin-top:8px; }
+    .offset-row .offset-label { color:var(--muted); font-size:11px; }
+    .offset-row input { width:80px; background:#0a0807; color:var(--ink); border:1px solid var(--line);
+                        border-radius:4px; padding:4px 6px; font:inherit; }
+    .offset-row .offset-hint { color:var(--muted); font-size:11px; }
+    .cheat.disabled .offset-row input { pointer-events:none; }
     .toast { position:fixed; bottom:18px; right:18px; padding:8px 14px;
              background:var(--panel); border:1px solid var(--line);
              border-left:3px solid var(--hot); border-radius:6px;
@@ -71,7 +77,15 @@
     <div class="cheats" id="cheats">
       <div class="cheat disabled" data-cheat="MOB_VAC" data-key="1">
         <span class="kbd">1</span>
-        <div class="label"><div class="name">Mob Vac</div><div class="desc">Teleports every mob on the map to you, every tick.</div></div>
+        <div class="label">
+          <div class="name">Mob Vac</div>
+          <div class="desc">Teleports every mob on the map to you, every tick.</div>
+          <div class="offset-row">
+            <span class="offset-label">Offset (px)</span>
+            <input type="number" id="vacOffset" value="0" step="5" min="-500" max="500" onclick="event.stopPropagation()" onkeydown="event.stopPropagation()">
+            <span class="offset-hint">−left / +right</span>
+          </div>
+        </div>
         <div class="indicator"></div>
       </div>
       <div class="cheat disabled" data-cheat="KILL_ALL" data-key="2">
@@ -92,6 +106,11 @@
       <div class="cheat disabled" data-cheat="GODMODE" data-key="5">
         <span class="kbd">5</span>
         <div class="label"><div class="name">God Mode</div><div class="desc">Server-side: mob damage to you becomes 0.</div></div>
+        <div class="indicator"></div>
+      </div>
+      <div class="cheat disabled" data-cheat="NO_KNOCKBACK" data-key="6">
+        <span class="kbd">6</span>
+        <div class="label"><div class="name">No Knockback</div><div class="desc">Applies BuffStat.STANCE = 100. Mob hits no longer push you around.</div></div>
         <div class="indicator"></div>
       </div>
     </div>
@@ -151,12 +170,32 @@
     async function refreshState() {
       try {
         const state = await getJson('/api/trainer/state');
-        const cheats = (state && hookedName && state[hookedName]) || [];
+        const entry = (state && hookedName && state[hookedName]) || null;
+        const cheats = entry ? entry.cheats : [];
         cheatEls.forEach(el => {
           const isActive = cheats.includes(el.dataset.cheat);
           el.classList.toggle('on', isActive);
         });
+        const offsetInput = document.getElementById('vacOffset');
+        if (entry && document.activeElement !== offsetInput) {
+          offsetInput.value = entry.vacOffset;
+        }
       } catch (e) {}
+    }
+
+    async function saveOffset() {
+      if (!hookedName) return;
+      const offset = Number(document.getElementById('vacOffset').value || 0);
+      try {
+        const r = await fetch('/api/trainer/offset', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: hookedName, offset })
+        });
+        const j = await r.json();
+        showToast(j.message || (j.ok ? 'OK' : 'Failed'), !j.ok);
+      } catch (e) {
+        showToast('Request failed: ' + e.message, true);
+      }
     }
 
     async function toggle(cheat) {
@@ -196,6 +235,8 @@
         toggle(el.dataset.cheat);
       });
     });
+
+    document.getElementById('vacOffset').addEventListener('change', saveOffset);
 
     document.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
