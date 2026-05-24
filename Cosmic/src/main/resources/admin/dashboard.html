@@ -1164,9 +1164,10 @@
       if (!accounts.length) { el.innerHTML = '<div class="empty">No matches.</div>'; return; }
       el.innerHTML = accounts.map(a => `
         <div class="acct">
-          <div class="acct-head" onclick="if(!event.target.closest('.acct-ban') && !event.target.closest('.acct-new')) this.parentElement.classList.toggle('open')">
-            <span><b>${escapeHtml(a.name)}</b> <span class="sub">id ${a.id} · ${(a.characters||[]).length} char${a.characters.length===1?'':'s'}${a.loggedin?' · <span style="color:var(--good);">online</span>':''}${a.banned>0?' · <span style="color:var(--danger);">BANNED</span>':''}${a.gm>0?' · GM '+a.gm:''}</span></span>
+          <div class="acct-head" onclick="if(!event.target.closest('.acct-ban') && !event.target.closest('.acct-new') && !event.target.closest('.acct-slots')) this.parentElement.classList.toggle('open')">
+            <span><b>${escapeHtml(a.name)}</b> <span class="sub">id ${a.id} · ${(a.characters||[]).length}/${a.slots} chars${a.loggedin?' · <span style="color:var(--good);">online</span>':''}${a.banned>0?' · <span style="color:var(--danger);">BANNED</span>':''}${a.gm>0?' · GM '+a.gm:''}</span></span>
             <span class="acct-ban">
+              <button class="acct-slots" onclick="event.stopPropagation(); setSlots(${a.id}, '${escapeHtml(a.name)}', ${a.slots})" title="Change character slot limit (currently ${a.slots})">Slots: ${a.slots}</button>
               <button class="acct-new" onclick="event.stopPropagation(); createCharOn(${a.id}, '${escapeHtml(a.name)}')">+ New character</button>
               ${a.banned > 0
                 ? `<button onclick="event.stopPropagation(); post({action:'unbanAccount', accountId:${a.id}}).then(loadAccounts)">Unban</button>`
@@ -1178,6 +1179,13 @@
             ${(a.characters||[]).map(c => renderCharRow(c)).join('') || '<div class="empty">(no characters)</div>'}
           </div>
         </div>`).join('');
+    }
+    function setSlots(accountId, accountName, current) {
+      const v = prompt(`Character slot limit for account "${accountName}" (id ${accountId}).\nCurrently ${current}. New value (1-15):`, String(current));
+      if (v === null) return;
+      const n = Number(v);
+      if (!Number.isInteger(n) || n < 1 || n > 15) { toast('Slots must be an integer 1-15.', true); return; }
+      post({ action:'setAccountSlots', accountId, slots: n }).then(() => loadAccounts());
     }
     function createCharOn(accountId, accountName) {
       const name = prompt(`Create a new character on account "${accountName}" (id ${accountId}).\n\nName (4-12 alphanumeric):`, '');

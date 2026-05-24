@@ -1059,6 +1059,22 @@ public class AdminDashboardServer {
                     }
                     sendOk(exchange, "GM level for '" + ref.name + "' set to " + level + (online != null ? " (live)" : " (offline DB)") + ".");
                 }
+                case "setAccountSlots" -> {
+                    int accountId = Integer.parseInt(body.getOrDefault("accountId", "0"));
+                    int slots = Integer.parseInt(body.getOrDefault("slots", "3"));
+                    if (slots < 1 || slots > 15) {
+                        throw new IllegalArgumentException("Slots must be between 1 and 15 (v83 char-select UI breaks beyond that).");
+                    }
+                    try (Connection con = DatabaseConnection.getConnection();
+                         PreparedStatement up = con.prepareStatement("UPDATE accounts SET characterslots = ? WHERE id = ?")) {
+                        up.setInt(1, slots);
+                        up.setInt(2, accountId);
+                        if (up.executeUpdate() == 0) throw new IllegalArgumentException("Account " + accountId + " not found.");
+                    } catch (SQLException ex) {
+                        throw new IllegalStateException("DB error: " + ex.getMessage());
+                    }
+                    sendOk(exchange, "Account " + accountId + " character slots set to " + slots + ".");
+                }
                 case "createCharacter" -> {
                     int accountId = Integer.parseInt(body.getOrDefault("accountId", "0"));
                     String charName = body.getOrDefault("charName", "").trim();
