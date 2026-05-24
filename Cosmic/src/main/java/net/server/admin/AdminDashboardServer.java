@@ -63,6 +63,7 @@ public class AdminDashboardServer {
         server.createContext("/api/accounts", this::handleAccounts);
         server.createContext("/api/items", this::handleItems);
         server.createContext("/api/icon/", this::handleIcon);
+        server.createContext("/api/inventory", this::handleInventory);
         server.createContext("/trainer", this::handleTrainerPage);
         server.createContext("/api/trainer/state", this::handleTrainerState);
         server.createContext("/api/trainer/toggle", this::handleTrainerToggle);
@@ -470,6 +471,85 @@ public class AdminDashboardServer {
             + ",\"dispJump\":" + jump
             + ",\"maxAttack\":" + maxAtk
             + ",\"minAttack\":" + minAtk;
+    }
+
+    /**
+     * Returns the four bag inventories + cash inventory of an online character
+     * keyed by inventory name: {equip:[...], use:[...], setup:[...], etc:[...], cash:[...]}.
+     * Each entry is {slot, itemId, quantity, name}. Equip items also include their
+     * scrolled stats so the dashboard can show "Sword #1302000 STR+3 WATK+88".
+     */
+    private void handleInventory(HttpExchange exchange) throws IOException {
+        String name = "";
+        String query = exchange.getRequestURI().getRawQuery();
+        if (query != null) {
+            for (String pair : query.split("&")) {
+                int eq = pair.indexOf('=');
+                if (eq > 0 && "name".equals(pair.substring(0, eq))) {
+                    name = java.net.URLDecoder.decode(pair.substring(eq + 1), StandardCharsets.UTF_8);
+                }
+            }
+        }
+        if (name.isEmpty()) {
+            sendJson(exchange, 400, "{\"error\":\"name query param required\"}");
+            return;
+        }
+        Character player = findOnlineByName(name);
+        if (player == null) {
+            sendJson(exchange, 404, "{\"error\":\"Character not online\"}");
+            return;
+        }
+        ItemInformationProvider iip = ItemInformationProvider.getInstance();
+        StringBuilder sb = new StringBuilder("{");
+        boolean firstType = true;
+        for (InventoryType type : new InventoryType[]{InventoryType.EQUIP, InventoryType.USE, InventoryType.SETUP, InventoryType.ETC, InventoryType.CASH}) {
+            if (!firstType) sb.append(',');
+            firstType = false;
+            sb.append('"').append(type.name().toLowerCase()).append("\":[");
+            Inventory inv = player.getInventory(type);
+            if (inv != null) {
+                List<String> rows = new ArrayList<>();
+                for (Item it : inv.list()) {
+                    String iname = iip.getName(it.getItemId());
+                    StringBuilder row = new StringBuilder("{");
+                    row.append("\"slot\":").append(it.getPosition());
+                    row.append(",\"itemId\":").append(it.getItemId());
+                    row.append(",\"quantity\":").append(it.getQuantity());
+                    row.append(",\"name\":\"").append(json(iname == null ? "" : iname)).append('"');
+                    if (it instanceof Equip eq) {
+                        List<String> stats = new ArrayList<>();
+                        addStat(stats, "STR",   eq.getStr());
+                        addStat(stats, "DEX",   eq.getDex());
+                        addStat(stats, "INT",   eq.getInt());
+                        addStat(stats, "LUK",   eq.getLuk());
+                        addStat(stats, "MHP",   eq.getHp());
+                        addStat(stats, "MMP",   eq.getMp());
+                        addStat(stats, "PAD",   eq.getWatk());
+                        addStat(stats, "MAD",   eq.getMatk());
+                        addStat(stats, "PDD",   eq.getWdef());
+                        addStat(stats, "MDD",   eq.getMdef());
+                        addStat(stats, "ACC",   eq.getAcc());
+                        addStat(stats, "EVA",   eq.getAvoid());
+                        addStat(stats, "Hands", eq.getHands());
+                        addStat(stats, "Speed", eq.getSpeed());
+                        addStat(stats, "Jump",  eq.getJump());
+                        addStat(stats, "tuc",   (int) eq.getUpgradeSlots());
+                        row.append(",\"stats\":{").append(String.join(",", stats)).append('}');
+                    }
+                    row.append('}');
+                    rows.add(row.toString());
+                }
+                sb.append(String.join(",", rows));
+            }
+            sb.append(']');
+        }
+        sb.append('}');
+        sendJson(exchange, 200, sb.toString());
+    }
+
+    /** Appends "key":value to the list when value != 0. */
+    private void addStat(List<String> sink, String key, int value) {
+        if (value != 0) sink.add("\"" + key + "\":" + value);
     }
 
     /** Builds a JSON array of the character's equipped items: [{slot, itemId, name}]. */

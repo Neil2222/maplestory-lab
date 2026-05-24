@@ -76,6 +76,11 @@
     .overview-grid { display:grid; grid-template-columns: 1fr 1fr; gap:14px; margin-bottom:14px; }
     @media (max-width: 900px) { .overview-grid { grid-template-columns: 1fr; } }
     .overview-grid .panel { margin-bottom:0; }
+    .inv-section { margin-bottom:18px; }
+    .inv-section:last-child { margin-bottom:0; }
+    .inv-section-head { font-size:12px; color:var(--muted); margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid var(--line); }
+    .inv-section-head b { color:var(--accent); text-transform:uppercase; letter-spacing:0.5px; font-size:11px; font-weight:600; }
+    .inv-qty { position:absolute; bottom:-4px; right:-4px; background:#13100d; border:1px solid var(--line); border-radius:9px; padding:1px 6px; font:10px ui-monospace, Consolas, monospace; color:var(--ink); pointer-events:none; }
     .world-card { background:var(--panel-2); border:1px solid var(--line); border-radius:6px; padding:12px 14px; margin-bottom:10px; }
     .world-head h3 { margin:0 0 8px; font-size:14px; font-weight:600; }
     .world-grid { display:grid; gap:8px; grid-template-columns: 1fr 1fr 1fr auto; align-items:end; }
@@ -229,6 +234,7 @@
         <nav class="subtabs">
           <button data-subtab="stats" class="active">Overview</button>
           <button data-subtab="equipment">Equipment</button>
+          <button data-subtab="inventory">Inventory</button>
           <button data-subtab="items">Items</button>
         </nav>
 
@@ -313,6 +319,14 @@
               Click a filled slot to unequip — item goes back to the EQUIP inventory tab.
               Totals with gear deltas are in the left sidebar.
             </div>
+          </div>
+        </div>
+
+        <!-- INVENTORY SUBTAB -->
+        <div data-subpanel="inventory" class="hidden">
+          <div class="panel">
+            <h2>Inventory <span class="sub" id="invHint">select an online character</span> <button onclick="loadInventory()" style="margin-left:8px;">Refresh</button></h2>
+            <div id="inventoryBody"><div class="empty">Pick a character — inventory loads on demand.</div></div>
           </div>
         </div>
 
@@ -528,6 +542,9 @@
           // Stats for equipped items come from itemsCache — make sure it's loading.
           if (!itemsCache) loadItems().then(() => { if (selectedPlayerInfo) renderEquipment(selectedPlayerInfo); });
           if (selectedPlayerInfo) renderEquipment(selectedPlayerInfo);
+        }
+        if (btn.dataset.subtab === 'inventory' && selected) {
+          loadInventory();
         }
       };
     });
@@ -1083,6 +1100,56 @@
     function setCharGm(cid) {
       const level = num('gm_' + cid);
       post({ action:'setGmLevel', charId: cid, level }).then(loadAccounts);
+    }
+
+    // --- inventory ---
+    async function loadInventory() {
+      const body = document.getElementById('inventoryBody');
+      const hint = document.getElementById('invHint');
+      if (!selected) {
+        body.innerHTML = '<div class="empty">Select an online character first.</div>';
+        hint.textContent = 'select an online character';
+        return;
+      }
+      hint.innerHTML = `<b style="color:var(--ink);">${escapeHtml(selected)}</b> — live snapshot`;
+      body.innerHTML = '<div class="empty">Loading…</div>';
+      try {
+        const inv = await getJson('/api/inventory?name=' + encodeURIComponent(selected));
+        if (inv.error) { body.innerHTML = '<div class="empty">' + escapeHtml(inv.error) + '</div>'; return; }
+        const sections = [
+          ['equip', 'Equip',  'Items you could equip (drag in-game).'],
+          ['use',   'Use',    'Potions, scrolls, summoning rocks.'],
+          ['setup', 'Setup',  'Chairs, decoratives.'],
+          ['etc',   'Etc',    'Quest items and miscellany.'],
+          ['cash',  'Cash',   'NX items and pets.'],
+        ];
+        body.innerHTML = sections.map(([key, label, hint]) => {
+          const items = inv[key] || [];
+          if (!items.length) return `<div class="inv-section">
+            <div class="inv-section-head"><b>${label}</b> <span class="sub">(empty)</span></div></div>`;
+          return `<div class="inv-section">
+            <div class="inv-section-head"><b>${label}</b> <span class="sub">${items.length} item${items.length===1?'':'s'} · ${escapeHtml(hint)}</span></div>
+            <div class="items-grid">${items.map(renderInvCard).join('')}</div>
+          </div>`;
+        }).join('');
+      } catch (e) {
+        body.innerHTML = '<div class="empty">Failed to load: ' + escapeHtml(e.message) + '</div>';
+      }
+    }
+    function renderInvCard(it) {
+      const hasStats = it.stats && Object.keys(it.stats).length;
+      const klass = 'item-card' + (hasStats ? '' : ' no-stats');
+      const qtyBadge = it.quantity > 1 ? `<div class="inv-qty">x${it.quantity}</div>` : '';
+      return `<div class="${klass}" title="${escapeHtml(it.name)} (#${it.itemId}) slot ${it.slot}">
+        <div style="position:relative;">
+          <img class="icon" src="/api/icon/${it.itemId}.png" alt="" loading="lazy" decoding="async"
+               onerror="this.outerHTML='<div class=\\'icon fallback\\'>'+${it.itemId}.toString().slice(0,4)+'</div>'">
+          ${qtyBadge}
+        </div>
+        <div class="iname">${escapeHtml(it.name || '#' + it.itemId)}</div>
+        ${hasStats ? `<div class="istats">${formatStatsCompact(it.stats)}</div>` : ''}
+        <div class="iid">slot ${it.slot}</div>
+      </div>`;
     }
 
     // --- items tab ---
