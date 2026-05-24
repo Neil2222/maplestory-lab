@@ -552,6 +552,85 @@ public class AdminDashboardServer {
         if (value != 0) sink.add("\"" + key + "\":" + value);
     }
 
+    /**
+     * Maps an equip item ID to its default equipped slot, using v83 prefix rules.
+     * Returns 0 if the item isn't a known equip. For rings (-12..-15), picks the
+     * first free ring slot on the player so existing rings aren't clobbered.
+     */
+    private short defaultEquipSlot(int itemId, Character player) {
+        int p4 = itemId / 1000;
+        if (p4 == 1002) return -1;   // cap
+        if (p4 == 1003) return -2;   // face acc
+        if (p4 == 1004) return -3;   // eye acc
+        if (p4 == 1005) return -4;   // earring
+        int p3 = itemId / 10000;
+        if (p3 == 104) return -5;    // top
+        if (p3 == 105) return -5;    // overall (uses top slot, fills both slots in-game)
+        if (p3 == 106) return -6;    // pants
+        if (p3 == 107) return -7;    // shoes
+        if (p3 == 108) return -8;    // glove
+        if (p3 == 109) return -10;   // shield (slot -10)
+        if (p3 == 110) return -9;    // cape (slot -9)
+        if (p3 == 112) return -16;   // pendant
+        if (p3 == 113) return -17;   // belt
+        if (p3 == 114) return -49;   // medal
+        if (p3 == 180) return -19;   // pet equip
+        if (p3 >= 130 && p3 <= 179) return -11;  // weapon
+        if (p3 == 111) {  // ring — pick first free among -12..-15, else -12
+            Inventory eq = player.getInventory(InventoryType.EQUIPPED);
+            if (eq != null) {
+                for (short s = -12; s >= -15; s--) {
+                    if (eq.getItem(s) == null) return s;
+                }
+            }
+            return -12;
+        }
+        return 0;
+    }
+
+    /**
+     * Sorts an inventory in-place by item name (alphabetical). Mirrors what the
+     * in-game sort button does but adapted to be called from the dashboard.
+     * Returns the number of items sorted.
+     */
+    private int sortInventoryForCharacter(Character target, InventoryType invType) {
+        Inventory inv = target.getInventory(invType);
+        if (inv == null) return 0;
+        ItemInformationProvider iip = ItemInformationProvider.getInstance();
+        List<Item> items = new ArrayList<>();
+        List<client.inventory.ModifyInventory> mods = new ArrayList<>();
+        inv.lockInventory();
+        try {
+            for (short i = 1; i <= inv.getSlotLimit(); i++) {
+                Item it = inv.getItem(i);
+                if (it != null) items.add(it.copy());
+            }
+            for (Item it : items) {
+                inv.removeSlot(it.getPosition());
+                mods.add(new client.inventory.ModifyInventory(3, it));
+            }
+            items.sort((a, b) -> {
+                String na = iip.getName(a.getItemId());
+                String nb = iip.getName(b.getItemId());
+                if (na == null) na = String.valueOf(a.getItemId());
+                if (nb == null) nb = String.valueOf(b.getItemId());
+                int c = na.compareToIgnoreCase(nb);
+                if (c != 0) return c;
+                return Integer.compare(a.getItemId(), b.getItemId());
+            });
+            for (Item it : items) {
+                inv.addItem(it);
+                mods.add(new client.inventory.ModifyInventory(0, it.copy()));
+            }
+        } finally {
+            inv.unlockInventory();
+        }
+        target.getClient().sendPacket(tools.PacketCreator.modifyInventory(true, mods));
+        target.getClient().sendPacket(tools.PacketCreator.finishedSort2((byte) invType.getType()));
+        target.getClient().sendPacket(tools.PacketCreator.enableActions());
+        return items.size();
+    }
+
     /** Builds a JSON array of the character's equipped items: [{slot, itemId, name}]. */
     private String buildEquippedJson(Character player) {
         Inventory equipped = player.getInventory(InventoryType.EQUIPPED);
@@ -978,6 +1057,32 @@ public class AdminDashboardServer {
                     if (free < 0) throw new IllegalStateException("EQUIP inventory is full — make room first.");
                     InventoryManipulator.unequip(target.getClient(), slot, free);
                     sendOk(exchange, "Unequipped slot " + slot + " on " + target.getName() + " into EQUIP slot " + free + ".");
+                }
+                case "equip" -> {
+                    Character target = requirePlayer(body);
+                    short src = Short.parseShort(body.getOrDefault("invSlot", "0"));
+                    if (src <= 0) throw new IllegalArgumentException("invSlot must be a positive EQUIP inventory slot.");
+                    Inventory eqp = target.getInventory(InventoryType.EQUIP);
+                    Item item = eqp.getItem(src);
+                    if (item == null) throw new IllegalArgumentException("No item in EQUIP inventory slot " + src + ".");
+                    short dst = defaultEquipSlot(item.getItemId(), target);
+                    if (dst == 0) throw new IllegalStateException("Could not figure out which slot to equip item " + item.getItemId() + " into.");
+                    InventoryManipulator.equip(target.getClient(), src, dst);
+                    sendOk(exchange, "Equipped " + item.getItemId() + " from inventory slot " + src + " to equip slot " + dst + ".");
+                }
+                case "sortInventory" -> {
+                    Character target = requirePlayer(body);
+                    String typeStr = body.getOrDefault("invType", "").toLowerCase();
+                    InventoryType invType = switch (typeStr) {
+                        case "equip" -> InventoryType.EQUIP;
+                        case "use"   -> InventoryType.USE;
+                        case "setup" -> InventoryType.SETUP;
+                        case "etc"   -> InventoryType.ETC;
+                        case "cash"  -> InventoryType.CASH;
+                        default -> throw new IllegalArgumentException("invType must be one of equip/use/setup/etc/cash.");
+                    };
+                    int sorted = sortInventoryForCharacter(target, invType);
+                    sendOk(exchange, "Sorted " + sorted + " items in " + typeStr.toUpperCase() + " for " + target.getName() + ".");
                 }
                 case "notice" -> {
                     String message = body.getOrDefault("message", "").trim();

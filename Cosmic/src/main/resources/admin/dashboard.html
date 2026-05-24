@@ -81,6 +81,11 @@
     .inv-section-head { font-size:12px; color:var(--muted); margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid var(--line); }
     .inv-section-head b { color:var(--accent); text-transform:uppercase; letter-spacing:0.5px; font-size:11px; font-weight:600; }
     .inv-qty { position:absolute; bottom:-4px; right:-4px; background:#13100d; border:1px solid var(--line); border-radius:9px; padding:1px 6px; font:10px ui-monospace, Consolas, monospace; color:var(--ink); pointer-events:none; }
+    .slot-picker-modal { position:fixed; inset:0; background:rgba(10,8,7,0.78); z-index:99; display:flex; align-items:center; justify-content:center; padding:20px; }
+    .slot-picker-body { background:var(--panel); border:1px solid var(--line); border-radius:8px; max-width:640px; width:100%; max-height:80vh; overflow:auto; }
+    .slot-picker-head { padding:12px 14px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; }
+    .pd-slot.empty { cursor:pointer; }
+    .pd-slot.empty:hover { border-color:var(--accent); background:#1a2826; opacity:1; }
     .world-card { background:var(--panel-2); border:1px solid var(--line); border-radius:6px; padding:12px 14px; margin-bottom:10px; }
     .world-head h3 { margin:0 0 8px; font-size:14px; font-weight:600; }
     .world-grid { display:grid; gap:8px; grid-template-columns: 1fr 1fr 1fr auto; align-items:end; }
@@ -801,9 +806,80 @@
               <div class="pd-unequip">Click to unequip</div>
             </div>`;
           }
-          return `<div class="pd-slot empty" style="${style}"><span class="pd-label">${escapeHtml(label)}</span></div>`;
+          return `<div class="pd-slot empty" style="${style}" onclick="openSlotPicker(${slot})"
+                       title="Click to equip something from EQUIP inventory">
+            <span class="pd-label">${escapeHtml(label)}</span>
+            <span style="opacity:0.5; font-size:9px;">+ equip</span>
+          </div>`;
         }).join('');
       }
+    }
+
+    // Decide which equipped slot each EQUIP-inventory item belongs to, mirroring
+    // the server-side defaultEquipSlot helper. Shield/cape note: shield = -10, cape = -9.
+    function slotForItemId(itemId) {
+      const p4 = Math.floor(itemId / 1000);
+      if (p4 === 1002) return -1;
+      if (p4 === 1003) return -2;
+      if (p4 === 1004) return -3;
+      if (p4 === 1005) return -4;
+      const p3 = Math.floor(itemId / 10000);
+      if (p3 === 104) return -5;
+      if (p3 === 105) return -5;
+      if (p3 === 106) return -6;
+      if (p3 === 107) return -7;
+      if (p3 === 108) return -8;
+      if (p3 === 109) return -10;
+      if (p3 === 110) return -9;
+      if (p3 === 111) return -12;  // ring (any of -12..-15)
+      if (p3 === 112) return -16;
+      if (p3 === 113) return -17;
+      if (p3 === 114) return -49;
+      if (p3 === 180) return -19;
+      if (p3 >= 130 && p3 <= 179) return -11;
+      return 0;
+    }
+
+    function openSlotPicker(targetSlot) {
+      if (!selected) { toast('Select a character first.', true); return; }
+      if (!inventoryCache) {
+        toast('Loading inventory first…');
+        loadInventory().then(() => openSlotPicker(targetSlot));
+        return;
+      }
+      const matches = (inventoryCache.equip || []).filter(it => {
+        const s = slotForItemId(it.itemId);
+        // For rings (-12..-15) match any ring slot. Otherwise exact match.
+        if (targetSlot >= -15 && targetSlot <= -12 && s === -12) return true;
+        return s === targetSlot;
+      });
+      const existing = document.getElementById('slotPickerModal');
+      if (existing) existing.remove();
+      if (!matches.length) {
+        toast('No EQUIP inventory item fits that slot.', true);
+        return;
+      }
+      const modal = document.createElement('div');
+      modal.id = 'slotPickerModal';
+      modal.className = 'slot-picker-modal';
+      modal.innerHTML = `
+        <div class="slot-picker-body">
+          <div class="slot-picker-head">
+            <b>Equip into slot ${targetSlot}</b>
+            <button onclick="document.getElementById('slotPickerModal').remove()" style="margin-left:auto;">Close</button>
+          </div>
+          <div class="items-grid" style="padding:8px;">
+            ${matches.map(it => `<div class="item-card" onclick="document.getElementById('slotPickerModal').remove(); equipFromInv(${it.slot})">
+              <img class="icon" src="/api/icon/${it.itemId}.png" alt="" loading="lazy" decoding="async"
+                   onerror="this.outerHTML='<div class=\\'icon fallback\\'>'+${it.itemId}.toString().slice(0,4)+'</div>'">
+              <div class="iname">${escapeHtml(it.name || '#' + it.itemId)}</div>
+              ${it.stats && Object.keys(it.stats).length ? `<div class="istats">${formatStatsCompact(it.stats)}</div>` : ''}
+              <div class="iid">slot ${it.slot}</div>
+            </div>`).join('')}
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
     }
 
     // Sum a few gear-only stats Cosmic doesn't expose as Character totals.
@@ -1103,6 +1179,7 @@
     }
 
     // --- inventory ---
+    let inventoryCache = null; // last loaded inventory per character — used by paper-doll lookups
     async function loadInventory() {
       const body = document.getElementById('inventoryBody');
       const hint = document.getElementById('invHint');
@@ -1115,7 +1192,8 @@
       body.innerHTML = '<div class="empty">Loading…</div>';
       try {
         const inv = await getJson('/api/inventory?name=' + encodeURIComponent(selected));
-        if (inv.error) { body.innerHTML = '<div class="empty">' + escapeHtml(inv.error) + '</div>'; return; }
+        if (inv.error) { body.innerHTML = '<div class="empty">' + escapeHtml(inv.error) + '</div>'; inventoryCache = null; return; }
+        inventoryCache = inv;
         const sections = [
           ['equip', 'Equip',  'Items you could equip (drag in-game).'],
           ['use',   'Use',    'Potions, scrolls, summoning rocks.'],
@@ -1125,21 +1203,28 @@
         ];
         body.innerHTML = sections.map(([key, label, hint]) => {
           const items = inv[key] || [];
+          const sortBtn = items.length ? `<button onclick="sortInv('${key}')" style="font-size:11px; padding:3px 8px; margin-left:auto;">Sort A→Z</button>` : '';
           if (!items.length) return `<div class="inv-section">
             <div class="inv-section-head"><b>${label}</b> <span class="sub">(empty)</span></div></div>`;
           return `<div class="inv-section">
-            <div class="inv-section-head"><b>${label}</b> <span class="sub">${items.length} item${items.length===1?'':'s'} · ${escapeHtml(hint)}</span></div>
-            <div class="items-grid">${items.map(renderInvCard).join('')}</div>
+            <div class="inv-section-head" style="display:flex; align-items:center; gap:8px;">
+              <b>${label}</b> <span class="sub">${items.length} item${items.length===1?'':'s'} · ${escapeHtml(hint)}</span>
+              ${sortBtn}
+            </div>
+            <div class="items-grid">${items.map(i => renderInvCard(i, key)).join('')}</div>
           </div>`;
         }).join('');
       } catch (e) {
         body.innerHTML = '<div class="empty">Failed to load: ' + escapeHtml(e.message) + '</div>';
       }
     }
-    function renderInvCard(it) {
+    function renderInvCard(it, invKey) {
       const hasStats = it.stats && Object.keys(it.stats).length;
       const klass = 'item-card' + (hasStats ? '' : ' no-stats');
       const qtyBadge = it.quantity > 1 ? `<div class="inv-qty">x${it.quantity}</div>` : '';
+      const equipBtn = invKey === 'equip'
+        ? `<button class="igive" onclick="event.stopPropagation(); equipFromInv(${it.slot})" style="margin-top:4px;">Equip</button>`
+        : '';
       return `<div class="${klass}" title="${escapeHtml(it.name)} (#${it.itemId}) slot ${it.slot}">
         <div style="position:relative;">
           <img class="icon" src="/api/icon/${it.itemId}.png" alt="" loading="lazy" decoding="async"
@@ -1149,7 +1234,21 @@
         <div class="iname">${escapeHtml(it.name || '#' + it.itemId)}</div>
         ${hasStats ? `<div class="istats">${formatStatsCompact(it.stats)}</div>` : ''}
         <div class="iid">slot ${it.slot}</div>
+        ${equipBtn}
       </div>`;
+    }
+    function equipFromInv(invSlot) {
+      if (!selected) { toast('Select a character first.', true); return; }
+      post({ action:'equip', name:selected, invSlot }).then(() => {
+        // Refresh inventory + paperdoll after a small delay so the server state propagates.
+        setTimeout(() => { loadInventory(); }, 100);
+      });
+    }
+    function sortInv(invKey) {
+      if (!selected) { toast('Select a character first.', true); return; }
+      post({ action:'sortInventory', name:selected, invType: invKey }).then(() => {
+        setTimeout(() => loadInventory(), 100);
+      });
     }
 
     // --- items tab ---
