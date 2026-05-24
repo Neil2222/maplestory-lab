@@ -81,6 +81,10 @@
     .inv-section-head { font-size:12px; color:var(--muted); margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid var(--line); }
     .inv-section-head b { color:var(--accent); text-transform:uppercase; letter-spacing:0.5px; font-size:11px; font-weight:600; }
     .inv-qty { position:absolute; bottom:-4px; right:-4px; background:#13100d; border:1px solid var(--line); border-radius:9px; padding:1px 6px; font:10px ui-monospace, Consolas, monospace; color:var(--ink); pointer-events:none; }
+    .item-card { position:relative; }
+    .item-card .inv-del { position:absolute; top:2px; right:2px; width:18px; height:18px; padding:0; border-radius:50%; background:transparent; border:1px solid transparent; color:var(--muted); font-size:14px; line-height:1; cursor:pointer; opacity:0; transition:opacity .12s, color .12s, background .12s; }
+    .item-card:hover .inv-del { opacity:1; }
+    .item-card .inv-del:hover { background:var(--danger); border-color:var(--danger); color:#fff; }
     .slot-picker-modal { position:fixed; inset:0; background:rgba(10,8,7,0.78); z-index:99; display:flex; align-items:center; justify-content:center; padding:20px; }
     .slot-picker-body { background:var(--panel); border:1px solid var(--line); border-radius:8px; max-width:640px; width:100%; max-height:80vh; overflow:auto; }
     .slot-picker-head { padding:12px 14px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; }
@@ -1225,7 +1229,11 @@
       const equipBtn = invKey === 'equip'
         ? `<button class="igive" onclick="event.stopPropagation(); equipFromInv(${it.slot})" style="margin-top:4px;">Equip</button>`
         : '';
+      const safeName = (it.name || '#' + it.itemId).replace(/'/g, "\\'");
+      const deleteBtn = `<button class="inv-del" title="Delete this item (useful if it crashes the client)"
+        onclick="event.stopPropagation(); deleteInvItem('${invKey}', ${it.slot}, '${escapeHtml(safeName)}', ${it.quantity})">×</button>`;
       return `<div class="${klass}" title="${escapeHtml(it.name)} (#${it.itemId}) slot ${it.slot}">
+        ${deleteBtn}
         <div style="position:relative;">
           <img class="icon" src="/api/icon/${it.itemId}.png" alt="" loading="lazy" decoding="async"
                onerror="this.outerHTML='<div class=\\'icon fallback\\'>'+${it.itemId}.toString().slice(0,4)+'</div>'">
@@ -1242,6 +1250,14 @@
       post({ action:'equip', name:selected, invSlot }).then(() => {
         // Refresh inventory + paperdoll after a small delay so the server state propagates.
         setTimeout(() => { loadInventory(); }, 100);
+      });
+    }
+    function deleteInvItem(invKey, slot, name, quantity) {
+      if (!selected) { toast('Select a character first.', true); return; }
+      const qty = quantity > 1 ? ` (×${quantity})` : '';
+      if (!confirm(`Delete "${name}"${qty} from ${invKey.toUpperCase()} slot ${slot}?\n\nThis removes the item entirely — no recovery.`)) return;
+      post({ action:'deleteInventoryItem', name:selected, invType: invKey, slot }).then(() => {
+        setTimeout(() => loadInventory(), 100);
       });
     }
     function sortInv(invKey) {

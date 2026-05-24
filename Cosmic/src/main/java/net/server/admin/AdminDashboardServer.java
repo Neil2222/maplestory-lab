@@ -1070,6 +1070,34 @@ public class AdminDashboardServer {
                     InventoryManipulator.equip(target.getClient(), src, dst);
                     sendOk(exchange, "Equipped " + item.getItemId() + " from inventory slot " + src + " to equip slot " + dst + ".");
                 }
+                case "deleteInventoryItem" -> {
+                    Character target = requirePlayer(body);
+                    String typeStr = body.getOrDefault("invType", "").toLowerCase();
+                    short slot = Short.parseShort(body.getOrDefault("slot", "0"));
+                    InventoryType invType = switch (typeStr) {
+                        case "equip" -> InventoryType.EQUIP;
+                        case "use"   -> InventoryType.USE;
+                        case "setup" -> InventoryType.SETUP;
+                        case "etc"   -> InventoryType.ETC;
+                        case "cash"  -> InventoryType.CASH;
+                        default -> throw new IllegalArgumentException("invType must be one of equip/use/setup/etc/cash.");
+                    };
+                    Inventory inv = target.getInventory(invType);
+                    if (inv == null) throw new IllegalStateException("No " + typeStr + " inventory.");
+                    Item it = inv.getItem(slot);
+                    if (it == null) throw new IllegalArgumentException("No item in " + typeStr.toUpperCase() + " slot " + slot + ".");
+                    int itemId = it.getItemId();
+                    String name = it.getQuantity() > 1 ? (it.getQuantity() + "× ") : "";
+                    inv.lockInventory();
+                    try {
+                        inv.removeSlot(slot);
+                    } finally {
+                        inv.unlockInventory();
+                    }
+                    target.getClient().sendPacket(tools.PacketCreator.modifyInventory(true,
+                        java.util.List.of(new client.inventory.ModifyInventory(3, it))));
+                    sendOk(exchange, "Deleted " + name + "item " + itemId + " from " + typeStr.toUpperCase() + " slot " + slot + " on " + target.getName() + ".");
+                }
                 case "sortInventory" -> {
                     Character target = requirePlayer(body);
                     String typeStr = body.getOrDefault("invType", "").toLowerCase();
