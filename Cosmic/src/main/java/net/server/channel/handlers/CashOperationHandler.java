@@ -85,14 +85,8 @@ public final class CashOperationHandler extends AbstractPacketHandler {
                     }
 
                     if (action == 0x03) { // Item
-                        if (ItemConstants.isCashStore(cItem.getItemId()) && chr.getLevel() < 16) {
-                            c.enableCSActions();
-                            return;
-                        } else if (ItemConstants.isRateCoupon(cItem.getItemId()) && !YamlConfig.config.server.USE_SUPPLY_RATE_COUPONS) {
+                        if (ItemConstants.isRateCoupon(cItem.getItemId()) && !YamlConfig.config.server.USE_SUPPLY_RATE_COUPONS) {
                             chr.dropMessage(1, "Rate coupons are currently unavailable to purchase.");
-                            c.enableCSActions();
-                            return;
-                        } else if (ItemConstants.isMapleLife(cItem.getItemId()) && chr.getLevel() < 30) {
                             c.enableCSActions();
                             return;
                         }

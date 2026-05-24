@@ -1059,6 +1059,61 @@ public class AdminDashboardServer {
                     }
                     sendOk(exchange, "GM level for '" + ref.name + "' set to " + level + (online != null ? " (live)" : " (offline DB)") + ".");
                 }
+                case "applyPreset" -> {
+                    Character target = requirePlayer(body);
+                    int presetJob = Integer.parseInt(body.getOrDefault("job", "-1"));
+                    int presetLevel = Integer.parseInt(body.getOrDefault("level", "-1"));
+                    int presetStr = Integer.parseInt(body.getOrDefault("str", "4"));
+                    int presetDex = Integer.parseInt(body.getOrDefault("dex", "4"));
+                    int presetInt = Integer.parseInt(body.getOrDefault("int", "4"));
+                    int presetLuk = Integer.parseInt(body.getOrDefault("luk", "4"));
+                    int presetMap = Integer.parseInt(body.getOrDefault("mapId", "-1"));
+                    int presetMesos = Integer.parseInt(body.getOrDefault("mesos", "0"));
+                    boolean maxSkills = Boolean.parseBoolean(body.getOrDefault("maxSkills", "false"));
+                    if (presetJob < 0 || presetLevel < 1) {
+                        throw new IllegalArgumentException("Preset needs job and level >= 1.");
+                    }
+                    StringBuilder report = new StringBuilder();
+                    Client targetClient = target.getClient();
+                    CommandsExecutor exec = CommandsExecutor.getInstance();
+                    // 1. Level — Cosmic's LevelCommand pattern handles exp/level-up properly.
+                    exec.executeDirect(targetClient, "level", new String[]{ String.valueOf(presetLevel) });
+                    report.append("Lv→").append(presetLevel);
+                    // 2. Job change.
+                    exec.executeDirect(targetClient, "job", new String[]{ String.valueOf(presetJob) });
+                    report.append(" · job→").append(presetJob);
+                    // 3. Naturalize for clean baseline.
+                    exec.executeDirect(targetClient, "naturalize", new String[]{ String.valueOf(presetLevel) });
+                    report.append(" · naturalized");
+                    // 4. Override stat distribution with preset values via setattr.
+                    exec.executeDirect(targetClient, "setattr", new String[]{ "str", String.valueOf(presetStr) });
+                    exec.executeDirect(targetClient, "setattr", new String[]{ "dex", String.valueOf(presetDex) });
+                    exec.executeDirect(targetClient, "setattr", new String[]{ "int", String.valueOf(presetInt) });
+                    exec.executeDirect(targetClient, "setattr", new String[]{ "luk", String.valueOf(presetLuk) });
+                    // Burn AP that's now allocated — set remaining to 0 since preset accounted for it.
+                    exec.executeDirect(targetClient, "setattr", new String[]{ "ap", "0" });
+                    report.append(" · STR/DEX/INT/LUK ").append(presetStr).append("/").append(presetDex).append("/").append(presetInt).append("/").append(presetLuk);
+                    // 5. Optional: max all skills in current job tree.
+                    if (maxSkills) {
+                        exec.executeDirect(targetClient, "maxskill", new String[]{});
+                        report.append(" · skills maxed");
+                    }
+                    // 6. Warp.
+                    if (presetMap >= 0) {
+                        server.maps.MapleMap dest = targetClient.getChannelServer().getMapFactory().getMap(presetMap);
+                        if (dest != null && target.isAlive()) {
+                            target.saveLocationOnWarp();
+                            target.changeMap(dest, dest.getRandomPlayerSpawnpoint());
+                            report.append(" · warped to ").append(presetMap);
+                        }
+                    }
+                    // 7. Mesos.
+                    if (presetMesos > 0) {
+                        target.gainMeso(presetMesos, true);
+                        report.append(" · +").append(presetMesos).append(" mesos");
+                    }
+                    sendOk(exchange, "Applied preset to " + target.getName() + ": " + report);
+                }
                 case "forceWarp" -> {
                     Character target = requirePlayer(body);
                     int mapId = Integer.parseInt(body.getOrDefault("mapId", "-1"));

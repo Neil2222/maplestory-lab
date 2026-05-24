@@ -95,6 +95,16 @@
     .map-row .mwarp:hover { background:var(--accent-2); color:#fff; }
     .map-row.current { background:#1a2826; }
     .map-row.current .mid::after { content:' (here)'; color:var(--accent); }
+    .presets-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:12px; }
+    .preset-card { background:var(--panel-2); border:1px solid var(--line); border-radius:8px; padding:14px; display:flex; flex-direction:column; gap:8px; }
+    .preset-card h3 { margin:0; font-size:14px; font-weight:600; color:var(--accent); }
+    .preset-card .preset-sub { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.4px; }
+    .preset-card .preset-blurb { color:var(--ink); font-size:13px; line-height:1.4; }
+    .preset-card .preset-stats { font:11.5px ui-monospace, Consolas, monospace; color:var(--muted); display:grid; grid-template-columns: 1fr 1fr; gap:2px 8px; padding:6px 0; border-top:1px solid var(--line); }
+    .preset-card .preset-stats b { color:var(--ink); }
+    .preset-card .preset-apply { margin-top:auto; background:var(--accent-2); color:#fff; border:1px solid var(--accent-2); padding:8px; border-radius:6px; cursor:pointer; font:inherit; }
+    .preset-card .preset-apply:hover { background:var(--accent); }
+    .preset-card .preset-apply:disabled { opacity:0.4; cursor:not-allowed; }
     .slot-picker-modal { position:fixed; inset:0; background:rgba(10,8,7,0.78); z-index:99; display:flex; align-items:center; justify-content:center; padding:20px; }
     .slot-picker-body { background:var(--panel); border:1px solid var(--line); border-radius:8px; max-width:640px; width:100%; max-height:80vh; overflow:auto; }
     .slot-picker-head { padding:12px 14px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; }
@@ -256,6 +266,7 @@
           <button data-subtab="inventory">Inventory</button>
           <button data-subtab="items">Items</button>
           <button data-subtab="maps">Maps</button>
+          <button data-subtab="presets">Presets</button>
         </nav>
 
         <!-- OVERVIEW SUBTAB -->
@@ -347,6 +358,17 @@
           <div class="panel">
             <h2>Inventory <span class="sub" id="invHint">select an online character</span> <button onclick="loadInventory()" style="margin-left:8px;">Refresh</button></h2>
             <div id="inventoryBody"><div class="empty">Pick a character — inventory loads on demand.</div></div>
+          </div>
+        </div>
+
+        <!-- PRESETS SUBTAB -->
+        <div data-subpanel="presets" class="hidden">
+          <div class="panel">
+            <h2>Character presets <span class="sub">apply to <b id="presetTarget" class="selectedName none">(no character selected)</b></span></h2>
+            <div class="sub" style="margin-bottom:12px;">
+              Each preset rebuilds the selected character: sets level + job, naturalizes stats/HP/MP/SP, distributes AP per the build, optionally maxes all skills, warps to the start map, gives starter mesos. Existing skills are wiped, existing gear is left in EQUIP inventory.
+            </div>
+            <div class="presets-grid" id="presetsGrid"></div>
           </div>
         </div>
 
@@ -587,6 +609,9 @@
         }
         if (btn.dataset.subtab === 'maps') {
           if (!mapsCache) loadMaps(); else renderMaps();
+        }
+        if (btn.dataset.subtab === 'presets') {
+          renderPresets();
         }
       };
     });
@@ -1217,6 +1242,110 @@
     function setCharGm(cid) {
       const level = num('gm_' + cid);
       post({ action:'setGmLevel', charId: cid, level }).then(loadAccounts);
+    }
+
+    // --- presets ---
+    // Nostalgia presets. Each rebuilds a character to a "remembered" config:
+    // STR/DEX/INT/LUK are absolute target values (not deltas), so total ≈ str+dex+int+luk.
+    // For accuracy with v83 progression: AP available at level L = 5L+20 for adventurers
+    // (so a Lv 70 has 370 AP to spend; here we describe natural-feeling builds).
+    const PRESETS = [
+      {
+        id: 'bandit30',
+        name: 'Bandit Lv 30',
+        sub: 'Stab-build · just job-advanced',
+        blurb: 'A fresh 2nd-job Bandit, LUK-heavy build. Starts in Kerning City for that classic thief grind on Snails/Slimes.',
+        job: 420, level: 30, str: 4, dex: 25, int: 4, luk: 137,
+        mapId: 103000000,  // Kerning City
+        mesos: 50000, maxSkills: true,
+      },
+      {
+        id: 'chiefbandit70',
+        name: 'Chief Bandit Lv 70',
+        sub: 'Zakum runner · 3rd job ready',
+        blurb: 'Just advanced to 3rd job. LUK pumped for Avenger spam, parked in Sleepywood ready to walk the path to Zakum.',
+        job: 421, level: 70, str: 4, dex: 25, int: 4, luk: 337,
+        mapId: 105040300,  // Sleepywood
+        mesos: 500000, maxSkills: true,
+      },
+      {
+        id: 'crusader70',
+        name: 'Crusader Lv 70',
+        sub: 'Sword warrior · early 3rd job',
+        blurb: 'Two-handed Crusader, all STR with a sprinkle of DEX for accuracy. Drop into Sleepywood for Drakes / Mangos.',
+        job: 111, level: 70, str: 333, dex: 36, int: 4, luk: 4,
+        mapId: 105040300,
+        mesos: 500000, maxSkills: true,
+      },
+      {
+        id: 'priest70',
+        name: 'Priest Lv 70',
+        sub: 'Holy support · party leech buddy',
+        blurb: 'All-INT cleric → priest. Heal/Holy Symbol/MW for the party. Starts in El Nath for the classic party grind.',
+        job: 231, level: 70, str: 4, dex: 4, int: 337, luk: 25,
+        mapId: 211000000,  // El Nath
+        mesos: 500000, maxSkills: true,
+      },
+      {
+        id: 'hunter40',
+        name: 'Hunter Lv 40',
+        sub: 'Bowman · arrow blow grind',
+        blurb: 'Fresh Hunter — DEX bow build for Arrow Bomb stuns. Pop into Henesys to head to Pig Park.',
+        job: 310, level: 40, str: 4, dex: 187, int: 4, luk: 4,
+        mapId: 100000000,  // Henesys
+        mesos: 100000, maxSkills: true,
+      },
+      {
+        id: 'hero100',
+        name: 'Hero Lv 100',
+        sub: '4th job warrior · brandish farmer',
+        blurb: 'Maxed STR 4th job sword warrior. The classic clean-up build for Skele/Pap.',
+        job: 112, level: 100, str: 483, dex: 36, int: 4, luk: 4,
+        mapId: 220000000,  // Ludibrium
+        mesos: 1500000, maxSkills: true,
+      },
+    ];
+    function renderPresets() {
+      const grid = document.getElementById('presetsGrid');
+      const t = document.getElementById('presetTarget');
+      if (selected) { t.textContent = selected; t.classList.remove('none'); }
+      else { t.textContent = '(no character selected)'; t.classList.add('none'); }
+      const disabled = !selected ? 'disabled' : '';
+      grid.innerHTML = PRESETS.map(p => `
+        <div class="preset-card">
+          <h3>${escapeHtml(p.name)}</h3>
+          <div class="preset-sub">${escapeHtml(p.sub)}</div>
+          <div class="preset-blurb">${escapeHtml(p.blurb)}</div>
+          <div class="preset-stats">
+            <span>Job <b>${p.job}</b></span><span>Level <b>${p.level}</b></span>
+            <span>STR <b>${p.str}</b></span><span>DEX <b>${p.dex}</b></span>
+            <span>INT <b>${p.int}</b></span><span>LUK <b>${p.luk}</b></span>
+            <span>Mesos <b>${fmt.format(p.mesos)}</b></span><span>Skills <b>${p.maxSkills ? 'maxed' : 'none'}</b></span>
+          </div>
+          <button class="preset-apply" ${disabled} onclick="applyPreset('${p.id}')">Apply to ${selected ? escapeHtml(selected) : '…'}</button>
+        </div>`).join('');
+    }
+    function applyPreset(id) {
+      const p = PRESETS.find(x => x.id === id);
+      if (!p) return;
+      if (!selected) { toast('Select an online character first.', true); return; }
+      const ok = confirm(
+        `Apply "${p.name}" to ${selected}?\n\n` +
+        `• Level → ${p.level}\n` +
+        `• Job → ${p.job}\n` +
+        `• Naturalize (wipes existing skills)\n` +
+        `• STR/DEX/INT/LUK → ${p.str}/${p.dex}/${p.int}/${p.luk}\n` +
+        (p.maxSkills ? `• Max all skills for that job\n` : '') +
+        `• Warp to map ${p.mapId}\n` +
+        `• Give ${fmt.format(p.mesos)} mesos\n\n` +
+        `Existing gear stays in EQUIP inventory.`);
+      if (!ok) return;
+      post({
+        action: 'applyPreset', name: selected,
+        job: p.job, level: p.level,
+        str: p.str, dex: p.dex, int: p.int, luk: p.luk,
+        mapId: p.mapId, mesos: p.mesos, maxSkills: p.maxSkills,
+      });
     }
 
     // --- maps ---
