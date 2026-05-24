@@ -85,6 +85,16 @@
     .item-card .inv-del { position:absolute; top:2px; right:2px; width:18px; height:18px; padding:0; border-radius:50%; background:transparent; border:1px solid transparent; color:var(--muted); font-size:14px; line-height:1; cursor:pointer; opacity:0; transition:opacity .12s, color .12s, background .12s; }
     .item-card:hover .inv-del { opacity:1; }
     .item-card .inv-del:hover { background:var(--danger); border-color:var(--danger); color:#fff; }
+    .map-row { display:grid; grid-template-columns: 90px 140px 1fr auto; gap:10px; padding:6px 12px; border-bottom:1px solid #20180f; align-items:center; }
+    .map-row:hover { background:var(--panel-2); }
+    .map-row:last-child { border-bottom:0; }
+    .map-row .mid { font:12px ui-monospace, Consolas, monospace; color:var(--muted); }
+    .map-row .mregion { color:var(--accent); font-size:12px; }
+    .map-row .mname { color:var(--ink); }
+    .map-row .mwarp { background:transparent; border:1px solid var(--accent-2); color:var(--accent); padding:3px 12px; border-radius:4px; font-size:12px; cursor:pointer; }
+    .map-row .mwarp:hover { background:var(--accent-2); color:#fff; }
+    .map-row.current { background:#1a2826; }
+    .map-row.current .mid::after { content:' (here)'; color:var(--accent); }
     .slot-picker-modal { position:fixed; inset:0; background:rgba(10,8,7,0.78); z-index:99; display:flex; align-items:center; justify-content:center; padding:20px; }
     .slot-picker-body { background:var(--panel); border:1px solid var(--line); border-radius:8px; max-width:640px; width:100%; max-height:80vh; overflow:auto; }
     .slot-picker-head { padding:12px 14px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; }
@@ -245,6 +255,7 @@
           <button data-subtab="equipment">Equipment</button>
           <button data-subtab="inventory">Inventory</button>
           <button data-subtab="items">Items</button>
+          <button data-subtab="maps">Maps</button>
         </nav>
 
         <!-- OVERVIEW SUBTAB -->
@@ -336,6 +347,25 @@
           <div class="panel">
             <h2>Inventory <span class="sub" id="invHint">select an online character</span> <button onclick="loadInventory()" style="margin-left:8px;">Refresh</button></h2>
             <div id="inventoryBody"><div class="empty">Pick a character — inventory loads on demand.</div></div>
+          </div>
+        </div>
+
+        <!-- MAPS SUBTAB -->
+        <div data-subpanel="maps" class="hidden">
+          <div class="panel">
+            <h2>Map browser <span class="sub" id="mapsMeta">…</span></h2>
+            <div class="row" style="margin-bottom:10px;">
+              <input id="mapSearch" placeholder="Search by name, region, or ID…" oninput="renderMaps()" style="flex:1; min-width:180px;">
+              <select id="mapRegion" onchange="renderMaps()" style="flex:0 0 200px;">
+                <option value="">All regions</option>
+              </select>
+            </div>
+            <div class="sub" style="margin-bottom:6px;">
+              Click <b>Warp</b> to teleport <b id="mapTarget" class="selectedName none">(no character selected)</b> there.
+              Same effect as <code>!warp &lt;id&gt;</code> in-game.
+            </div>
+            <div id="mapsList" class="items-list"><div class="empty">Loading…</div></div>
+            <div class="sub" id="mapsCount" style="margin-top:6px;"></div>
           </div>
         </div>
 
@@ -555,6 +585,9 @@
         if (btn.dataset.subtab === 'inventory' && selected) {
           loadInventory();
         }
+        if (btn.dataset.subtab === 'maps') {
+          if (!mapsCache) loadMaps(); else renderMaps();
+        }
       };
     });
 
@@ -701,8 +734,12 @@
 
       document.getElementById('sbName').textContent = p.name;
       document.getElementById('sbJob').textContent = `Lv ${p.level} · ${p.job} (${p.jobId})`;
+      // Pretty map name if maps cache is loaded, else fall back to raw id.
+      const mapMeta = mapsById && mapsById.get(p.map);
+      const mapLabel = mapMeta ? `${escapeHtml(mapMeta.region)} — ${escapeHtml(mapMeta.name)}` : `Map ${p.map}`;
       document.getElementById('sbMeta').innerHTML =
-        `Map ${p.map}<br>World ${p.world} · Channel ${p.channel}` +
+        `${mapLabel} <span class="sub" style="color:var(--muted);">#${p.map}</span><br>` +
+        `World ${p.world} · Channel ${p.channel}` +
         (p.godmode ? `<br><span style="color:var(--good);">Godmode ON</span>` : '');
 
       // STR/DEX/INT/LUK/Magic/Watk: server already exposes total* values via
@@ -1182,6 +1219,71 @@
       post({ action:'setGmLevel', charId: cid, level }).then(loadAccounts);
     }
 
+    // --- maps ---
+    let mapsCache = null;
+    let mapsById = null;  // Map<id, {region, name}> for sidebar lookups
+    let mapRegionsBuilt = false;
+    async function loadMaps() {
+      const list = document.getElementById('mapsList');
+      list.innerHTML = '<div class="empty">Loading…</div>';
+      try {
+        mapsCache = await getJson('/api/maps');
+        mapsById = new Map();
+        for (const m of mapsCache) mapsById.set(m.id, m);
+        document.getElementById('mapsMeta').textContent = mapsCache.length + ' maps loaded';
+        if (!mapRegionsBuilt) {
+          const regions = Array.from(new Set(mapsCache.map(m => m.region))).sort();
+          const sel = document.getElementById('mapRegion');
+          for (const r of regions) {
+            const opt = document.createElement('option');
+            opt.value = r; opt.textContent = r;
+            sel.appendChild(opt);
+          }
+          mapRegionsBuilt = true;
+        }
+        renderMaps();
+        // Sidebar may show map names too — re-render to pick them up.
+        if (latestPlayers) renderSidebar(latestPlayers);
+      } catch (e) {
+        list.innerHTML = '<div class="empty">Failed to load: ' + escapeHtml(e.message) + '</div>';
+      }
+    }
+    function renderMaps() {
+      if (!mapsCache) return;
+      const t = document.getElementById('mapTarget');
+      if (selected) { t.textContent = selected; t.classList.remove('none'); }
+      else { t.textContent = '(no character selected)'; t.classList.add('none'); }
+      const q = (document.getElementById('mapSearch').value || '').toLowerCase().trim();
+      const region = document.getElementById('mapRegion').value;
+      let filtered = mapsCache;
+      if (region) filtered = filtered.filter(m => m.region === region);
+      if (q) {
+        if (/^\d+$/.test(q)) filtered = filtered.filter(m => String(m.id).startsWith(q));
+        else filtered = filtered.filter(m =>
+          m.name.toLowerCase().includes(q) || m.region.toLowerCase().includes(q));
+      }
+      const total = filtered.length;
+      const shown = filtered.slice(0, 300);
+      const here = selectedPlayerInfo ? selectedPlayerInfo.map : -1;
+      const list = document.getElementById('mapsList');
+      if (!shown.length) { list.innerHTML = '<div class="empty">No matches.</div>'; }
+      else {
+        list.innerHTML = shown.map(m =>
+          `<div class="map-row${m.id === here ? ' current' : ''}">
+            <span class="mid">${m.id}</span>
+            <span class="mregion">${escapeHtml(m.region)}</span>
+            <span class="mname">${escapeHtml(m.name)}</span>
+            <button class="mwarp" onclick="warpTo(${m.id})">Warp</button>
+          </div>`).join('');
+      }
+      document.getElementById('mapsCount').textContent =
+        total === shown.length ? `Showing all ${total} matches` : `Showing first ${shown.length} of ${total} — narrow your search to see more`;
+    }
+    function warpTo(mapId) {
+      if (!selected) { toast('Select an online character first.', true); return; }
+      post({ action:'runCommand', name:selected, command:'warp', args: String(mapId) });
+    }
+
     // --- inventory ---
     let inventoryCache = null; // last loaded inventory per character — used by paper-doll lookups
     async function loadInventory() {
@@ -1507,6 +1609,8 @@
     // and the Equipment tile tooltips, so kick them off at boot regardless of
     // which tab the user lands on. Re-render the sidebar once they arrive.
     loadItems().then(() => { if (latestPlayers) renderSidebar(latestPlayers); });
+    // Maps power the friendly map name in the sidebar — load at boot too.
+    loadMaps();
     refresh();
     setInterval(refresh, 3000);
   </script>

@@ -64,6 +64,7 @@ public class AdminDashboardServer {
         server.createContext("/api/items", this::handleItems);
         server.createContext("/api/icon/", this::handleIcon);
         server.createContext("/api/inventory", this::handleInventory);
+        server.createContext("/api/maps", this::handleMaps);
         server.createContext("/trainer", this::handleTrainerPage);
         server.createContext("/api/trainer/state", this::handleTrainerState);
         server.createContext("/api/trainer/toggle", this::handleTrainerToggle);
@@ -235,6 +236,22 @@ public class AdminDashboardServer {
         } catch (IllegalArgumentException ex) {
             sendJson(exchange, 400, "{\"ok\":false,\"message\":\"Unknown cheat: " + json(cheatName) + "\"}");
         }
+    }
+
+    private void handleMaps(HttpExchange exchange) throws IOException {
+        List<MapHandbook.MapInfo> maps = MapHandbook.load();
+        StringBuilder sb = new StringBuilder(maps.size() * 80);
+        sb.append('[');
+        boolean first = true;
+        for (MapHandbook.MapInfo m : maps) {
+            if (!first) sb.append(',');
+            first = false;
+            sb.append("{\"id\":").append(m.id())
+              .append(",\"region\":\"").append(json(m.region())).append("\"")
+              .append(",\"name\":\"").append(json(m.name())).append("\"}");
+        }
+        sb.append(']');
+        sendJson(exchange, 200, sb.toString());
     }
 
     private static final Path ADMIN_ICONS_DIR = Path.of("admin-icons");
