@@ -267,8 +267,8 @@
             <div class="panel">
               <h2>Lifecycle <span class="sub">irreversible — read the prompt first</span></h2>
               <div class="row">
-                <button class="primary" onclick="if(confirm('Naturalize '+selected+'?\\n\\n• STR/DEX/INT/LUK → 4\\n• Remaining AP → 5L+4\\n• HP/MP → job natural curve\\n• Remaining SP → 3 × (level−9), 0 for Beginner\\n• ALL learned skills wiped (DB row deleted)\\n\\nThis cannot be undone.')) cmd('naturalize')">Naturalize</button>
-                <button onclick="if(confirm('Max EVERYTHING on '+selected+'?')) cmd('maxstat')">Max everything</button>
+                <button class="primary" onclick="confirmNaturalize()">Naturalize</button>
+                <button onclick="confirmMax()">Max everything</button>
               </div>
               <div class="sub" style="margin-top:8px; color:var(--muted); font-size:12px;">
                 <b>Naturalize</b>: resets stats to natural defaults for current level + wipes all skills (refunded SP is genuinely fresh).
@@ -580,6 +580,27 @@
       if (!selected) { toast('Select a player first.', true); return; }
       const v = num(inputId);
       post({ action:'runCommand', name:selected, command:'setattr', args: attr + ' ' + v });
+    }
+    // Confirm dialogs as real functions so the message keeps newlines/bullets
+    // (inline onclick="confirm('…\\n…')" turns \n into a literal backslash-n).
+    function confirmNaturalize() {
+      if (!selected) { toast('Select a player first.', true); return; }
+      const msg =
+        'Naturalize ' + selected + '?\n\n' +
+        '• STR/DEX/INT/LUK → 4\n' +
+        '• Remaining AP → 5L+4\n' +
+        '• HP/MP → job natural curve\n' +
+        '• Remaining SP → 3 × (level−9), 0 for Beginner\n' +
+        '• ALL learned skills wiped (DB row deleted)\n\n' +
+        'This cannot be undone.';
+      if (confirm(msg)) cmd('naturalize');
+    }
+    function confirmMax() {
+      if (!selected) { toast('Select a player first.', true); return; }
+      if (confirm('Max EVERYTHING on ' + selected + '?\n\n' +
+                  '• Level → 255\n• STR/DEX/INT/LUK → Short.MAX (32767)\n' +
+                  '• HP / MP → 30000\n• Fame → 13337\n\n' +
+                  'This cannot be undone.')) cmd('maxstat');
     }
 
     // --- toast ---
