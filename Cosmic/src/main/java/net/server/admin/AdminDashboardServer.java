@@ -1059,6 +1059,75 @@ public class AdminDashboardServer {
                     }
                     sendOk(exchange, "GM level for '" + ref.name + "' set to " + level + (online != null ? " (live)" : " (offline DB)") + ".");
                 }
+                case "createCharacter" -> {
+                    int accountId = Integer.parseInt(body.getOrDefault("accountId", "0"));
+                    String charName = body.getOrDefault("charName", "").trim();
+                    int gender = Integer.parseInt(body.getOrDefault("gender", "0"));
+                    int world = Integer.parseInt(body.getOrDefault("world", "0"));
+                    if (charName.length() < 4 || charName.length() > 12) {
+                        throw new IllegalArgumentException("Name must be 4-12 characters.");
+                    }
+                    if (!charName.matches("[A-Za-z0-9]+")) {
+                        throw new IllegalArgumentException("Name must be alphanumeric.");
+                    }
+                    if (gender != 0 && gender != 1) {
+                        throw new IllegalArgumentException("Gender must be 0 (male) or 1 (female).");
+                    }
+                    if (Server.getInstance().getWorld(world) == null) {
+                        throw new IllegalArgumentException("World " + world + " is not active. Add it via setWorldCount first.");
+                    }
+                    int newCharId;
+                    try (Connection con = DatabaseConnection.getConnection()) {
+                        // Name uniqueness check (case-insensitive, like Cosmic does at signup).
+                        try (PreparedStatement ck = con.prepareStatement("SELECT id FROM characters WHERE LOWER(name) = LOWER(?)")) {
+                            ck.setString(1, charName);
+                            try (ResultSet rs = ck.executeQuery()) {
+                                if (rs.next()) throw new IllegalStateException("Name '" + charName + "' is already taken.");
+                            }
+                        }
+                        // Account existence + slot count.
+                        int slotLimit;
+                        try (PreparedStatement ck = con.prepareStatement("SELECT characterslots FROM accounts WHERE id = ?")) {
+                            ck.setInt(1, accountId);
+                            try (ResultSet rs = ck.executeQuery()) {
+                                if (!rs.next()) throw new IllegalArgumentException("Account " + accountId + " not found.");
+                                slotLimit = rs.getInt("characterslots");
+                            }
+                        }
+                        try (PreparedStatement ck = con.prepareStatement("SELECT COUNT(*) FROM characters WHERE accountid = ? AND world = ?")) {
+                            ck.setInt(1, accountId);
+                            ck.setInt(2, world);
+                            try (ResultSet rs = ck.executeQuery()) {
+                                rs.next();
+                                int count = rs.getInt(1);
+                                if (count >= slotLimit) throw new IllegalStateException("Account is full on world " + world + " (" + count + "/" + slotLimit + " slots).");
+                            }
+                        }
+                        // Defaults match what Cosmic's character creation produces for a beginner.
+                        int hair = gender == 0 ? 30000 : 31000;
+                        int face = gender == 0 ? 20000 : 21000;
+                        try (PreparedStatement ins = con.prepareStatement(
+                                "INSERT INTO characters " +
+                                "(accountid, world, name, level, str, dex, `int`, luk, hp, mp, maxhp, maxmp, job, skincolor, gender, hair, face, map, ap, sp) " +
+                                "VALUES (?, ?, ?, 1, 12, 5, 4, 4, 50, 5, 50, 5, 0, 0, ?, ?, ?, 0, 0, '0,0,0,0,0,0,0,0,0,0')",
+                                java.sql.Statement.RETURN_GENERATED_KEYS)) {
+                            ins.setInt(1, accountId);
+                            ins.setInt(2, world);
+                            ins.setString(3, charName);
+                            ins.setInt(4, gender);
+                            ins.setInt(5, hair);
+                            ins.setInt(6, face);
+                            ins.executeUpdate();
+                            try (ResultSet rs = ins.getGeneratedKeys()) {
+                                rs.next();
+                                newCharId = rs.getInt(1);
+                            }
+                        }
+                    } catch (SQLException ex) {
+                        throw new IllegalStateException("DB error: " + ex.getMessage());
+                    }
+                    sendOk(exchange, "Created '" + charName + "' (id " + newCharId + ") on account " + accountId + ", world " + world + ". Log in to apply a preset.");
+                }
                 case "applyPreset" -> {
                     Character target = requirePlayer(body);
                     int presetJob = Integer.parseInt(body.getOrDefault("job", "-1"));

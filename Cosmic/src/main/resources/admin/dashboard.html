@@ -1164,9 +1164,10 @@
       if (!accounts.length) { el.innerHTML = '<div class="empty">No matches.</div>'; return; }
       el.innerHTML = accounts.map(a => `
         <div class="acct">
-          <div class="acct-head" onclick="if(!event.target.closest('.acct-ban')) this.parentElement.classList.toggle('open')">
+          <div class="acct-head" onclick="if(!event.target.closest('.acct-ban') && !event.target.closest('.acct-new')) this.parentElement.classList.toggle('open')">
             <span><b>${escapeHtml(a.name)}</b> <span class="sub">id ${a.id} · ${(a.characters||[]).length} char${a.characters.length===1?'':'s'}${a.loggedin?' · <span style="color:var(--good);">online</span>':''}${a.banned>0?' · <span style="color:var(--danger);">BANNED</span>':''}${a.gm>0?' · GM '+a.gm:''}</span></span>
             <span class="acct-ban">
+              <button class="acct-new" onclick="event.stopPropagation(); createCharOn(${a.id}, '${escapeHtml(a.name)}')">+ New character</button>
               ${a.banned > 0
                 ? `<button onclick="event.stopPropagation(); post({action:'unbanAccount', accountId:${a.id}}).then(loadAccounts)">Unban</button>`
                 : `<button class="danger" onclick="event.stopPropagation(); banAccount(${a.id}, '${escapeHtml(a.name)}')">Ban</button>`}
@@ -1177,6 +1178,18 @@
             ${(a.characters||[]).map(c => renderCharRow(c)).join('') || '<div class="empty">(no characters)</div>'}
           </div>
         </div>`).join('');
+    }
+    function createCharOn(accountId, accountName) {
+      const name = prompt(`Create a new character on account "${accountName}" (id ${accountId}).\n\nName (4-12 alphanumeric):`, '');
+      if (name === null) return;
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      const gStr = prompt('Gender? Type M or F:', 'M');
+      if (gStr === null) return;
+      const gender = (gStr.toLowerCase().startsWith('f')) ? 1 : 0;
+      const world = Number(prompt('World ID (0 = Scania)?', '0'));
+      post({ action:'createCharacter', accountId, charName: trimmed, gender, world: isNaN(world) ? 0 : world })
+        .then(() => loadAccounts());
     }
     function banAccount(id, name) {
       const reason = prompt('Ban reason for account "' + name + '" (id ' + id + '):', 'Banned by admin dashboard.');
