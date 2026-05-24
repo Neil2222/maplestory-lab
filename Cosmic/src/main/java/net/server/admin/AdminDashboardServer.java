@@ -1076,74 +1076,42 @@ public class AdminDashboardServer {
                     if (Server.getInstance().getWorld(world) == null) {
                         throw new IllegalArgumentException("World " + world + " is not active. Add it via setWorldCount first.");
                     }
-                    int newCharId;
-                    try (Connection con = DatabaseConnection.getConnection()) {
-                        // Name uniqueness check (case-insensitive, like Cosmic does at signup).
-                        try (PreparedStatement ck = con.prepareStatement("SELECT id FROM characters WHERE LOWER(name) = LOWER(?)")) {
-                            ck.setString(1, charName);
-                            try (ResultSet rs = ck.executeQuery()) {
-                                if (rs.next()) throw new IllegalStateException("Name '" + charName + "' is already taken.");
-                            }
-                        }
-                        // Account existence + slot count.
-                        int slotLimit;
-                        try (PreparedStatement ck = con.prepareStatement("SELECT characterslots FROM accounts WHERE id = ?")) {
-                            ck.setInt(1, accountId);
-                            try (ResultSet rs = ck.executeQuery()) {
-                                if (!rs.next()) throw new IllegalArgumentException("Account " + accountId + " not found.");
-                                slotLimit = rs.getInt("characterslots");
-                            }
-                        }
-                        try (PreparedStatement ck = con.prepareStatement("SELECT COUNT(*) FROM characters WHERE accountid = ? AND world = ?")) {
-                            ck.setInt(1, accountId);
-                            ck.setInt(2, world);
-                            try (ResultSet rs = ck.executeQuery()) {
-                                rs.next();
-                                int count = rs.getInt(1);
-                                if (count >= slotLimit) throw new IllegalStateException("Account is full on world " + world + " (" + count + "/" + slotLimit + " slots).");
-                            }
-                        }
-                        // Defaults match what Cosmic's character creation produces for a beginner.
-                        int hair = gender == 0 ? 30000 : 31000;
-                        int face = gender == 0 ? 20000 : 21000;
-                        try (PreparedStatement ins = con.prepareStatement(
-                                "INSERT INTO characters " +
-                                "(accountid, world, name, level, str, dex, `int`, luk, hp, mp, maxhp, maxmp, job, skincolor, gender, hair, face, map, ap, sp) " +
-                                "VALUES (?, ?, ?, 1, 12, 5, 4, 4, 50, 5, 50, 5, 0, 0, ?, ?, ?, 0, 0, '0,0,0,0,0,0,0,0,0,0')",
-                                java.sql.Statement.RETURN_GENERATED_KEYS)) {
-                            ins.setInt(1, accountId);
-                            ins.setInt(2, world);
-                            ins.setString(3, charName);
-                            ins.setInt(4, gender);
-                            ins.setInt(5, hair);
-                            ins.setInt(6, face);
-                            ins.executeUpdate();
-                            try (ResultSet rs = ins.getGeneratedKeys()) {
-                                rs.next();
-                                newCharId = rs.getInt(1);
-                            }
-                        }
-                        // INSERT default keymap rows — Cosmic does this on normal character
-                        // creation; without them the player can't bind potions/skills/etc.
-                        // Mirrors the loop in Character.newPlayer().
-                        int[] keys = constants.game.GameConstants.getCustomKey(config.YamlConfig.config.server.USE_CUSTOM_KEYSET);
-                        int[] types = constants.game.GameConstants.getCustomType(config.YamlConfig.config.server.USE_CUSTOM_KEYSET);
-                        int[] actions = constants.game.GameConstants.getCustomAction(config.YamlConfig.config.server.USE_CUSTOM_KEYSET);
-                        try (PreparedStatement ks = con.prepareStatement(
-                                "INSERT INTO keymap (characterid, `key`, `type`, `action`) VALUES (?, ?, ?, ?)")) {
-                            for (int i = 0; i < keys.length; i++) {
-                                ks.setInt(1, newCharId);
-                                ks.setInt(2, keys[i]);
-                                ks.setInt(3, types[i]);
-                                ks.setInt(4, actions[i]);
-                                ks.addBatch();
-                            }
-                            ks.executeBatch();
+                    // Name uniqueness check.
+                    try (Connection con = DatabaseConnection.getConnection();
+                         PreparedStatement ck = con.prepareStatement("SELECT id FROM characters WHERE LOWER(name) = LOWER(?)")) {
+                        ck.setString(1, charName);
+                        try (ResultSet rs = ck.executeQuery()) {
+                            if (rs.next()) throw new IllegalStateException("Name '" + charName + "' is already taken.");
                         }
                     } catch (SQLException ex) {
                         throw new IllegalStateException("DB error: " + ex.getMessage());
                     }
-                    sendOk(exchange, "Created '" + charName + "' (id " + newCharId + ") on account " + accountId + ", world " + world + " (with default keybinds). Log in to apply a preset.");
+                    // Build via Cosmic's own pipeline (Character.getDefault populates keymap,
+                    // BuddyList, trockmaps, slot limits, etc.) so the result is byte-for-byte
+                    // identical to a normally-created character. Skips CharacterFactory's
+                    // sendPacket() because we have no live client to push the new-char entry to.
+                    Client tempClient = new Client(Client.Type.LOGIN, -1, null, null, world, 1);
+                    tempClient.setAccID(accountId);
+                    Character newChar = Character.getDefault(tempClient);
+                    newChar.setWorld(world);
+                    newChar.setSkinColor(client.SkinColor.getById(0));
+                    newChar.setGender(gender);
+                    newChar.setName(charName);
+                    int hair = gender == 0 ? 30000 : 31000;
+                    int face = gender == 0 ? 20000 : 21000;
+                    newChar.setHair(hair);
+                    newChar.setFace(face);
+                    newChar.setLevel(1);
+                    newChar.setJob(client.Job.BEGINNER);
+                    newChar.setMapId(constants.id.MapId.MUSHROOM_TOWN);
+                    client.creator.CharacterFactoryRecipe recipe = new client.creator.CharacterFactoryRecipe(
+                        client.Job.BEGINNER, 1, constants.id.MapId.MUSHROOM_TOWN, 0, 0, 0, 0);
+                    recipe.addStartingItem(constants.id.ItemId.BEGINNERS_GUIDE, 1, InventoryType.ETC);
+                    if (!newChar.insertNewChar(recipe)) {
+                        throw new IllegalStateException("insertNewChar returned false — schema mismatch?");
+                    }
+                    Server.getInstance().createCharacterEntry(newChar);
+                    sendOk(exchange, "Created '" + charName + "' (id " + newChar.getId() + ") on account " + accountId + ", world " + world + ". Log in and apply a preset.");
                 }
                 case "applyPreset" -> {
                     Character target = requirePlayer(body);
