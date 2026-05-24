@@ -1123,10 +1123,27 @@ public class AdminDashboardServer {
                                 newCharId = rs.getInt(1);
                             }
                         }
+                        // INSERT default keymap rows — Cosmic does this on normal character
+                        // creation; without them the player can't bind potions/skills/etc.
+                        // Mirrors the loop in Character.newPlayer().
+                        int[] keys = constants.game.GameConstants.getCustomKey(config.YamlConfig.config.server.USE_CUSTOM_KEYSET);
+                        int[] types = constants.game.GameConstants.getCustomType(config.YamlConfig.config.server.USE_CUSTOM_KEYSET);
+                        int[] actions = constants.game.GameConstants.getCustomAction(config.YamlConfig.config.server.USE_CUSTOM_KEYSET);
+                        try (PreparedStatement ks = con.prepareStatement(
+                                "INSERT INTO keymap (characterid, `key`, `type`, `action`) VALUES (?, ?, ?, ?)")) {
+                            for (int i = 0; i < keys.length; i++) {
+                                ks.setInt(1, newCharId);
+                                ks.setInt(2, keys[i]);
+                                ks.setInt(3, types[i]);
+                                ks.setInt(4, actions[i]);
+                                ks.addBatch();
+                            }
+                            ks.executeBatch();
+                        }
                     } catch (SQLException ex) {
                         throw new IllegalStateException("DB error: " + ex.getMessage());
                     }
-                    sendOk(exchange, "Created '" + charName + "' (id " + newCharId + ") on account " + accountId + ", world " + world + ". Log in to apply a preset.");
+                    sendOk(exchange, "Created '" + charName + "' (id " + newCharId + ") on account " + accountId + ", world " + world + " (with default keybinds). Log in to apply a preset.");
                 }
                 case "applyPreset" -> {
                     Character target = requirePlayer(body);
@@ -1166,6 +1183,34 @@ public class AdminDashboardServer {
                     if (maxSkills) {
                         exec.executeDirect(targetClient, "maxskill", new String[]{});
                         report.append(" · skills maxed");
+                    }
+                    // 5b. Optional gear set — equip IDs as a comma-separated list.
+                    String equipsCsv = body.getOrDefault("equips", "").trim();
+                    int equipped = 0;
+                    if (!equipsCsv.isEmpty()) {
+                        for (String idStr : equipsCsv.split(",")) {
+                            int eqId;
+                            try { eqId = Integer.parseInt(idStr.trim()); }
+                            catch (NumberFormatException e) { continue; }
+                            if (eqId == 0) continue;
+                            boolean added = InventoryManipulator.addById(targetClient, eqId, (short) 1);
+                            if (!added) continue;
+                            // Find the slot the item just landed in by scanning EQUIP for a fresh
+                            // copy of that itemId. addById picks the next free slot, so any matching
+                            // item with the highest position is likely the new one — but safer: take
+                            // the first match we don't already have an equipped twin of.
+                            Inventory eqInv = target.getInventory(InventoryType.EQUIP);
+                            short srcSlot = -1;
+                            for (Item it : eqInv.list()) {
+                                if (it.getItemId() == eqId) { srcSlot = it.getPosition(); }
+                            }
+                            if (srcSlot <= 0) continue;
+                            short dst = defaultEquipSlot(eqId, target);
+                            if (dst == 0) continue;
+                            try { InventoryManipulator.equip(targetClient, srcSlot, dst); equipped++; }
+                            catch (Exception ex) { /* slot mismatch / invalid — leave in inventory */ }
+                        }
+                        report.append(" · equipped ").append(equipped).append("/").append(equipsCsv.split(",").length);
                     }
                     // 6. Warp.
                     if (presetMap >= 0) {

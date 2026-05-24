@@ -1262,6 +1262,10 @@
     // STR/DEX/INT/LUK are absolute target values (not deltas), so total ≈ str+dex+int+luk.
     // For accuracy with v83 progression: AP available at level L = 5L+20 for adventurers
     // (so a Lv 70 has 370 AP to spend; here we describe natural-feeling builds).
+    // Each equips entry is comma-separated v83 item IDs. Server adds them to
+    // EQUIP inventory and equips into the matching slot (defaultEquipSlot rules).
+    // IDs are conservative picks for the level/job — if any fails it's silently
+    // skipped. Replace via the items browser later if you want different gear.
     const PRESETS = [
       {
         id: 'bandit30',
@@ -1269,8 +1273,9 @@
         sub: 'Stab-build · just job-advanced',
         blurb: 'A fresh 2nd-job Bandit, LUK-heavy build. Starts in Kerning City for that classic thief grind on Snails/Slimes.',
         job: 420, level: 30, str: 4, dex: 25, int: 4, luk: 137,
-        mapId: 103000000,  // Kerning City
+        mapId: 103000000,
         mesos: 50000, maxSkills: true,
+        equips: '1332006,1040020,1060013,1072002', // Sai, blue jeans top/pants, basic shoes
       },
       {
         id: 'chiefbandit70',
@@ -1278,8 +1283,9 @@
         sub: 'Zakum runner · 3rd job ready',
         blurb: 'Just advanced to 3rd job. LUK pumped for Avenger spam, parked in Sleepywood ready to walk the path to Zakum.',
         job: 421, level: 70, str: 4, dex: 25, int: 4, luk: 337,
-        mapId: 105040300,  // Sleepywood
+        mapId: 105040300,
         mesos: 500000, maxSkills: true,
+        equips: '1332024,1002357,1040107,1060089,1072202,1082002,1102041', // Vampire Tooth, Zakum helmet, top/pants/shoes/gloves/cape
       },
       {
         id: 'crusader70',
@@ -1289,6 +1295,7 @@
         job: 111, level: 70, str: 333, dex: 36, int: 4, luk: 4,
         mapId: 105040300,
         mesos: 500000, maxSkills: true,
+        equips: '1402017,1002359,1040096,1060073,1072161,1082002,1102041', // Two-handed sword + Zhelm warrior + basics
       },
       {
         id: 'priest70',
@@ -1296,8 +1303,9 @@
         sub: 'Holy support · party leech buddy',
         blurb: 'All-INT cleric → priest. Heal/Holy Symbol/MW for the party. Starts in El Nath for the classic party grind.',
         job: 231, level: 70, str: 4, dex: 4, int: 337, luk: 25,
-        mapId: 211000000,  // El Nath
+        mapId: 211000000,
         mesos: 500000, maxSkills: true,
+        equips: '1382009,1002358,1041043,1061057,1072165,1082002', // Wisdom Staff + mage Zhelm + cleric robe set
       },
       {
         id: 'hunter40',
@@ -1305,8 +1313,9 @@
         sub: 'Bowman · arrow blow grind',
         blurb: 'Fresh Hunter — DEX bow build for Arrow Bomb stuns. Pop into Henesys to head to Pig Park.',
         job: 310, level: 40, str: 4, dex: 187, int: 4, luk: 4,
-        mapId: 100000000,  // Henesys
+        mapId: 100000000,
         mesos: 100000, maxSkills: true,
+        equips: '1452006,1002053,1040034,1060021,1072002', // basic bow + adventurer hat/top/pants/shoes
       },
       {
         id: 'hero100',
@@ -1314,8 +1323,9 @@
         sub: '4th job warrior · brandish farmer',
         blurb: 'Maxed STR 4th job sword warrior. The classic clean-up build for Skele/Pap.',
         job: 112, level: 100, str: 483, dex: 36, int: 4, luk: 4,
-        mapId: 220000000,  // Ludibrium
+        mapId: 220000000,
         mesos: 1500000, maxSkills: true,
+        equips: '1402039,1002359,1040104,1060089,1072202,1082002,1102041', // Devil Cleaver + Zhelm warrior + better armor
       },
     ];
     function renderPresets() {
@@ -1342,6 +1352,7 @@
       const p = PRESETS.find(x => x.id === id);
       if (!p) return;
       if (!selected) { toast('Select an online character first.', true); return; }
+      const equipCount = p.equips ? p.equips.split(',').filter(s => s.trim()).length : 0;
       const ok = confirm(
         `Apply "${p.name}" to ${selected}?\n\n` +
         `• Level → ${p.level}\n` +
@@ -1349,15 +1360,17 @@
         `• Naturalize (wipes existing skills)\n` +
         `• STR/DEX/INT/LUK → ${p.str}/${p.dex}/${p.int}/${p.luk}\n` +
         (p.maxSkills ? `• Max all skills for that job\n` : '') +
+        (equipCount ? `• Give & equip ${equipCount} gear item${equipCount===1?'':'s'}\n` : '') +
         `• Warp to map ${p.mapId}\n` +
         `• Give ${fmt.format(p.mesos)} mesos\n\n` +
-        `Existing gear stays in EQUIP inventory.`);
+        `Existing gear stays in EQUIP inventory (the new pieces won't replace it unless slots are empty).`);
       if (!ok) return;
       post({
         action: 'applyPreset', name: selected,
         job: p.job, level: p.level,
         str: p.str, dex: p.dex, int: p.int, luk: p.luk,
         mapId: p.mapId, mesos: p.mesos, maxSkills: p.maxSkills,
+        equips: p.equips || '',
       });
     }
 
