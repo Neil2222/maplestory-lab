@@ -1110,7 +1110,16 @@ public class AdminDashboardServer {
                     if (!newChar.insertNewChar(recipe)) {
                         throw new IllegalStateException("insertNewChar returned false — schema mismatch?");
                     }
-                    Server.getInstance().createCharacterEntry(newChar);
+                    // createCharacterEntry registers the char in the world's online roster.
+                    // It NPEs when the account isn't already in the server's accountCharacterCount
+                    // map (accounts not logged in this session). The DB INSERT already succeeded,
+                    // so the character is real — Cosmic will pick it up on the account's next
+                    // login. Swallow the NPE and continue.
+                    try {
+                        Server.getInstance().createCharacterEntry(newChar);
+                    } catch (NullPointerException npe) {
+                        // expected for cold accounts; nothing else to do
+                    }
                     sendOk(exchange, "Created '" + charName + "' (id " + newChar.getId() + ") on account " + accountId + ", world " + world + ". Log in and apply a preset.");
                 }
                 case "applyPreset" -> {
