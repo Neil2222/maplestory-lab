@@ -1076,12 +1076,32 @@ public class AdminDashboardServer {
                     if (Server.getInstance().getWorld(world) == null) {
                         throw new IllegalArgumentException("World " + world + " is not active. Add it via setWorldCount first.");
                     }
-                    // Name uniqueness check.
-                    try (Connection con = DatabaseConnection.getConnection();
-                         PreparedStatement ck = con.prepareStatement("SELECT id FROM characters WHERE LOWER(name) = LOWER(?)")) {
-                        ck.setString(1, charName);
-                        try (ResultSet rs = ck.executeQuery()) {
-                            if (rs.next()) throw new IllegalStateException("Name '" + charName + "' is already taken.");
+                    // Name uniqueness + account exists + slot limit check.
+                    try (Connection con = DatabaseConnection.getConnection()) {
+                        try (PreparedStatement ck = con.prepareStatement("SELECT id FROM characters WHERE LOWER(name) = LOWER(?)")) {
+                            ck.setString(1, charName);
+                            try (ResultSet rs = ck.executeQuery()) {
+                                if (rs.next()) throw new IllegalStateException("Name '" + charName + "' is already taken.");
+                            }
+                        }
+                        int slotLimit;
+                        try (PreparedStatement ck = con.prepareStatement("SELECT characterslots FROM accounts WHERE id = ?")) {
+                            ck.setInt(1, accountId);
+                            try (ResultSet rs = ck.executeQuery()) {
+                                if (!rs.next()) throw new IllegalArgumentException("Account " + accountId + " not found.");
+                                slotLimit = rs.getInt("characterslots");
+                            }
+                        }
+                        try (PreparedStatement ck = con.prepareStatement("SELECT COUNT(*) FROM characters WHERE accountid = ? AND world = ?")) {
+                            ck.setInt(1, accountId);
+                            ck.setInt(2, world);
+                            try (ResultSet rs = ck.executeQuery()) {
+                                rs.next();
+                                int count = rs.getInt(1);
+                                if (count >= slotLimit) {
+                                    throw new IllegalStateException("Account is full on world " + world + " (" + count + "/" + slotLimit + " slots). Delete a character or raise characterslots in the accounts table to override.");
+                                }
+                            }
                         }
                     } catch (SQLException ex) {
                         throw new IllegalStateException("DB error: " + ex.getMessage());
