@@ -3,6 +3,7 @@ package net.server.admin;
 import client.Character;
 import client.Client;
 import client.command.CommandsExecutor;
+import client.inventory.Equip;
 import client.inventory.Inventory;
 import client.inventory.InventoryType;
 import client.inventory.Item;
@@ -420,6 +421,57 @@ public class AdminDashboardServer {
         sendJson(exchange, 200, "[" + String.join(",", rows) + "]");
     }
 
+    /**
+     * Computes the in-game CHARACTER STAT window numbers that Cosmic doesn't track
+     * server-side, using public-domain v83 formulas plus actual gear sums from
+     * Equip.getXxx. Output keys mirror the dashboard sidebar labels.
+     *
+     * - WDEF / MDEF / ACC / EVA / HANDS / SPEED / JUMP: gear sum (+ stat-based base
+     *   contribution where the game window adds one — MDEF gets INT, ACC gets
+     *   floor(DEX*0.8)+floor(LUK/2), EVA gets floor((LUK+DEX)/2), SPEED/JUMP base 100).
+     * - maxAttack: server-side calculateMaxBaseDamage(totalWatk).
+     * - minAttack: max × 0.15 — no-mastery floor used by the GMS client.
+     */
+    private String buildDisplayStatsJson(Character player) {
+        int gWdef = 0, gMdef = 0, gAcc = 0, gEva = 0, gHands = 0, gSpeed = 0, gJump = 0;
+        Inventory equipped = player.getInventory(InventoryType.EQUIPPED);
+        if (equipped != null) {
+            for (Item it : equipped.list()) {
+                if (it instanceof Equip eq) {
+                    gWdef  += eq.getWdef();
+                    gMdef  += eq.getMdef();
+                    gAcc   += eq.getAcc();
+                    gEva   += eq.getAvoid();
+                    gHands += eq.getHands();
+                    gSpeed += eq.getSpeed();
+                    gJump  += eq.getJump();
+                }
+            }
+        }
+        int totalDex = player.getTotalDex();
+        int totalLuk = player.getTotalLuk();
+        int totalInt = player.getTotalInt();
+        int wdef = gWdef;
+        int mdef = gMdef + totalInt;
+        int acc  = gAcc + (int) Math.floor(totalDex * 0.8) + totalLuk / 2;
+        int eva  = gEva + (totalLuk + totalDex) / 2;
+        int hands = gHands;
+        int speed = 100 + gSpeed;
+        int jump  = 100 + gJump;
+        int maxAtk = player.calculateMaxBaseDamage(player.getTotalWatk());
+        int minAtk = (int) Math.floor(maxAtk * 0.15);
+
+        return "\"dispWdef\":" + wdef
+            + ",\"dispMdef\":" + mdef
+            + ",\"dispAcc\":" + acc
+            + ",\"dispEva\":" + eva
+            + ",\"dispHands\":" + hands
+            + ",\"dispSpeed\":" + speed
+            + ",\"dispJump\":" + jump
+            + ",\"maxAttack\":" + maxAtk
+            + ",\"minAttack\":" + minAtk;
+    }
+
     /** Builds a JSON array of the character's equipped items: [{slot, itemId, name}]. */
     private String buildEquippedJson(Character player) {
         Inventory equipped = player.getInventory(InventoryType.EQUIPPED);
@@ -506,6 +558,7 @@ public class AdminDashboardServer {
                     + "\"totalLuk\":" + player.getTotalLuk() + ","
                     + "\"totalWatk\":" + player.getTotalWatk() + ","
                     + "\"totalMagic\":" + player.getTotalMagic() + ","
+                    + buildDisplayStatsJson(player) + ","
                     + "\"equipped\":" + buildEquippedJson(player)
                     + "}");
         }

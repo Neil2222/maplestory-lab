@@ -638,24 +638,26 @@
         const d = total - base;
         return d > 0 ? `${total}<span class="delta">+${d}</span>` : String(total);
       };
-      // WDEF/MDEF/ACC/EVA/SPEED/JUMP: Cosmic doesn't track totals server-side.
-      // Sum them from itemsCache lookups on the equipped[] list — that's the
-      // gear contribution. (SPEED/JUMP base is 100; the rest are gear-only.)
-      const gear = sumEquipBonuses(p.equipped, itemsByIdMap()) || {PDD:0,MDD:0,ACC:0,EVA:0,Speed:0,Jump:0};
+      // disp* fields are server-side computed display stats (see
+      // AdminDashboardServer.buildDisplayStatsJson) that match the in-game
+      // CHARACTER STAT window: gear sums + the stat formulas Cosmic doesn't
+      // store but the v83 client computes.
       document.getElementById('sbStats').innerHTML = [
-        ['STR',    withDelta(p.totalStr, p.str)],
-        ['DEX',    withDelta(p.totalDex, p.dex)],
-        ['INT',    withDelta(p.totalInt, p.int)],
-        ['LUK',    withDelta(p.totalLuk, p.luk)],
-        ['WATK',   p.totalWatk],
-        ['Magic',  p.totalMagic],
-        ['WDEF',   gear.PDD],
-        ['MDEF',   gear.MDD],
-        ['ACC',    gear.ACC],
-        ['EVA',    gear.EVA],
-        ['Speed',  100 + gear.Speed],
-        ['Jump',   100 + gear.Jump],
-        ['Max HP', p.maxHp], ['Max MP', p.maxMp],
+        ['STR',     withDelta(p.totalStr, p.str)],
+        ['DEX',     withDelta(p.totalDex, p.dex)],
+        ['INT',     withDelta(p.totalInt, p.int)],
+        ['LUK',     withDelta(p.totalLuk, p.luk)],
+        ['Attack',  p.minAttack + ' ~ ' + p.maxAttack],
+        ['WATK',    p.totalWatk],
+        ['Magic',   p.totalMagic],
+        ['WDEF',    p.dispWdef],
+        ['MDEF',    p.dispMdef],
+        ['ACC',     p.dispAcc],
+        ['EVA',     p.dispEva],
+        ['Hands',   p.dispHands],
+        ['Speed',   p.dispSpeed + '%'],
+        ['Jump',    p.dispJump + '%'],
+        ['Max HP',  p.maxHp], ['Max MP', p.maxMp],
         ['AP', p.ap], ['SP', p.sp],
         ['Fame', p.fame], ['NX', fmt.format(p.nx)],
         ['Meso', fmt.format(p.meso)], ['Account', p.account]
