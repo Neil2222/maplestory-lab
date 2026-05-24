@@ -5,6 +5,7 @@ import client.Client;
 import client.Job;
 import client.Skill;
 import client.command.Command;
+import tools.Randomizer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,26 +35,33 @@ public class NaturalizeCommand extends Command {
             return;
         }
 
-        // Per-level HP/MP midpoints derived from the random ranges in Character.levelUp().
-        int hpPerLvl, mpPerLvl;
+        // Per-level HP/MP gain ranges, mirroring the Randomizer calls in
+        // Character.levelUp(). Picking a fresh roll per level here makes the
+        // resulting character look like 'what if I'd just levelled normally',
+        // not a deterministic always-the-same midpoint character.
+        int hpMin, hpMax, mpMin, mpMax;
         Job job = player.getJob();
         if (job.isA(Job.WARRIOR) || job.isA(Job.DAWNWARRIOR1)) {
-            hpPerLvl = 26; mpPerLvl = 5;
+            hpMin = 24; hpMax = 28; mpMin = 4;  mpMax = 6;
         } else if (job.isA(Job.MAGICIAN) || job.isA(Job.BLAZEWIZARD1)) {
-            hpPerLvl = 12; mpPerLvl = 23;
+            hpMin = 10; hpMax = 14; mpMin = 22; mpMax = 24;
         } else if (job.isA(Job.BOWMAN) || job.isA(Job.THIEF) || (job.getId() > 1299 && job.getId() < 1500)) {
-            hpPerLvl = 22; mpPerLvl = 15;
+            hpMin = 20; hpMax = 24; mpMin = 14; mpMax = 16;
         } else if (job.isA(Job.PIRATE) || job.isA(Job.THUNDERBREAKER1)) {
-            hpPerLvl = 25; mpPerLvl = 20;
+            hpMin = 22; hpMax = 28; mpMin = 18; mpMax = 23;
         } else if (job.isA(Job.ARAN1)) {
-            hpPerLvl = 46; mpPerLvl = 6;
+            hpMin = 44; hpMax = 48; mpMin = 4;  mpMax = 8;
         } else {
             // Beginner / Noblesse / Legend / unknown -> beginner curve
-            hpPerLvl = 14; mpPerLvl = 11;
+            hpMin = 12; hpMax = 16; mpMin = 10; mpMax = 12;
         }
 
-        int newMaxHp = 50 + (level - 1) * hpPerLvl;
-        int newMaxMp = 5 + (level - 1) * mpPerLvl;
+        int newMaxHp = 50;
+        int newMaxMp = 5;
+        for (int i = 1; i < level; i++) {
+            newMaxHp += Randomizer.rand(hpMin, hpMax);
+            newMaxMp += Randomizer.rand(mpMin, mpMax);
+        }
         int newRemainingAp = Math.max(0, 5 * level + 4);
 
         // Wipe learned skills: changeSkillLevel(..., -1, ...) removes from both
