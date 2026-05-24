@@ -1059,6 +1059,18 @@ public class AdminDashboardServer {
                     }
                     sendOk(exchange, "GM level for '" + ref.name + "' set to " + level + (online != null ? " (live)" : " (offline DB)") + ".");
                 }
+                case "forceWarp" -> {
+                    Character target = requirePlayer(body);
+                    int mapId = Integer.parseInt(body.getOrDefault("mapId", "-1"));
+                    server.maps.MapleMap dest = target.getClient().getChannelServer().getMapFactory().getMap(mapId);
+                    if (dest == null) throw new IllegalArgumentException("Map " + mapId + " does not exist.");
+                    if (!target.isAlive()) throw new IllegalStateException(target.getName() + " is dead — revive first.");
+                    // Direct changeMap, skipping the FieldLimit/event/mini-dungeon checks the
+                    // in-game !warp enforces for non-GM players. Dashboard is the admin tool.
+                    target.saveLocationOnWarp();
+                    target.changeMap(dest, dest.getRandomPlayerSpawnpoint());
+                    sendOk(exchange, "Warped " + target.getName() + " to map " + mapId + ".");
+                }
                 case "kick" -> {
                     Character target = requirePlayer(body);
                     String name = target.getName();

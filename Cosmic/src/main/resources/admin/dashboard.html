@@ -1281,7 +1281,9 @@
     }
     function warpTo(mapId) {
       if (!selected) { toast('Select an online character first.', true); return; }
-      post({ action:'runCommand', name:selected, command:'warp', args: String(mapId) });
+      // forceWarp bypasses the FieldLimit/event/mini-dungeon checks that block
+      // !warp for non-GM players. Dashboard = admin tool, always works.
+      post({ action:'forceWarp', name:selected, mapId });
     }
 
     // --- inventory ---
