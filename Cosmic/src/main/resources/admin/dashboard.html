@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Maple Lab Admin</title>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
   <style>
     :root {
       --bg:#1c1814; --panel:#2a231d; --panel-2:#332a23; --ink:#f5ecdc; --muted:#a89580;
@@ -411,9 +412,13 @@
                 <input type="checkbox" id="itemCosmetics" onchange="renderItems()">
                 <span>Show cosmetics (Skin/Hair/Face)</span>
               </label>
+              <label class="field" style="flex-direction:row; align-items:center; gap:6px;">
+                <input type="checkbox" id="itemGM" onchange="renderItems()">
+                <span>Show GM</span>
+              </label>
               <label class="field" style="margin-left:auto; flex-direction:row; align-items:center; gap:6px;">
                 <input type="checkbox" id="itemRecommended" onchange="renderItems()">
-                <span>Recommended for selected character (top 5 per slot)</span>
+                <span>Recommended for selected character (top 10 per slot)</span>
               </label>
             </div>
             <div class="sub" style="margin-bottom:6px;">
@@ -1561,6 +1566,12 @@
     // Cosmetic equip slots — char creation only, hidden behind the 'Show cosmetics' toggle.
     const COSMETIC_CATS = new Set(['Equip/Skin', 'Equip/Hair', 'Equip/Face']);
 
+    const GM_ITEM_RE = /\bwizet\b|\bjunior gm\b|\bgm\b/i;
+    const GM_ITEM_IDS = new Set([1002140, 1042003, 1062007, 1322013, 1002959]);
+    function isGmItem(item) {
+      return GM_ITEM_IDS.has(item.id) || GM_ITEM_RE.test(item.name);
+    }
+
     function renderItems() {
       if (!itemsCache) return;
       const t = document.getElementById('itemTarget');
@@ -1579,9 +1590,11 @@
       const minWatk = Number(document.getElementById('itemMinWatk').value || 0);
       const minMatk = Number(document.getElementById('itemMinMatk').value || 0);
       const showCosmetics = document.getElementById('itemCosmetics').checked;
+      const showGM = document.getElementById('itemGM').checked;
 
       let filtered = itemsCache;
       if (!showCosmetics && !cat) filtered = filtered.filter(i => !COSMETIC_CATS.has(i.cat));
+      if (!showGM) filtered = filtered.filter(i => !isGmItem(i));
       if (cat) filtered = filtered.filter(i => i.cat === cat);
       if (q) {
         if (/^\d+$/.test(q)) filtered = filtered.filter(i => String(i.id).startsWith(q));
@@ -1700,10 +1713,11 @@
       const groups = [];
       let totalEligible = 0;
       for (const slot of RECOMMENDED_SLOTS) {
+        const showGM = document.getElementById('itemGM').checked;
         const candidates = itemsCache
-          .filter(i => i.cat === slot && canEquip(i, p))
+          .filter(i => i.cat === slot && canEquip(i, p) && (showGM || !isGmItem(i)))
           .sort((a, b) => scoreFor(b, p) - scoreFor(a, p))
-          .slice(0, 5);
+          .slice(0, 10);
         if (!candidates.length) continue;
         totalEligible += candidates.length;
         groups.push(`<div class="rec-group">

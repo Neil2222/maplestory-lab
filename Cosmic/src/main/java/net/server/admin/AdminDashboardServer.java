@@ -55,6 +55,7 @@ public class AdminDashboardServer {
     private AdminDashboardServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress(HOST, PORT), 0);
         server.createContext("/", this::handleIndex);
+        server.createContext("/favicon.ico", this::handleFavicon);
         server.createContext("/api/status", this::handleStatus);
         server.createContext("/api/players", this::handlePlayers);
         server.createContext("/api/action", this::handleAction);
@@ -104,6 +105,26 @@ public class AdminDashboardServer {
             send(exchange, 200, "text/html", html());
         } catch (IOException e) {
             send(exchange, 500, "text/plain", "Failed to load dashboard: " + e.getMessage());
+        }
+    }
+
+    private static final Path FAVICON_PATH = Path.of("maple.ico");
+
+    private void handleFavicon(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            send(exchange, 405, "text/plain", "Method not allowed");
+            return;
+        }
+        if (!Files.exists(FAVICON_PATH)) {
+            send(exchange, 404, "text/plain", "No favicon");
+            return;
+        }
+        byte[] data = Files.readAllBytes(FAVICON_PATH);
+        exchange.getResponseHeaders().set("Content-Type", "image/x-icon");
+        exchange.getResponseHeaders().set("Cache-Control", "public, max-age=86400");
+        exchange.sendResponseHeaders(200, data.length);
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(data);
         }
     }
 
