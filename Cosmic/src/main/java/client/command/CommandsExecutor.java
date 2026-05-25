@@ -24,6 +24,7 @@
 package client.command;
 
 import client.Client;
+import client.command.commands.gm0.AiCommand;
 import client.command.commands.gm0.ChangeLanguageCommand;
 import client.command.commands.gm0.DisposeCommand;
 import client.command.commands.gm0.DropLimitCommand;
@@ -393,6 +394,7 @@ public class CommandsExecutor {
         addCommand("mylawn", MapOwnerClaimCommand.class);
         addCommand("bosshp", BossHpCommand.class);
         addCommand("mobhp", MobHpCommand.class);
+        addCommand("ai", AiCommand.class);
 
         commandsNameDesc.add(levelCommandsCursor);
     }

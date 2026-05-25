@@ -70,6 +70,7 @@ public class AdminDashboardServer {
         server.createContext("/api/trainer/state", this::handleTrainerState);
         server.createContext("/api/trainer/toggle", this::handleTrainerToggle);
         server.createContext("/api/trainer/offset", this::handleTrainerOffset);
+        server.createContext("/api/chat", this::handleChat);
         // Small fixed pool so concurrent slow requests (icon proxy fetches) don't
         // block fast endpoints like /api/status and /api/action.
         java.util.concurrent.atomic.AtomicInteger n = new java.util.concurrent.atomic.AtomicInteger();
@@ -1439,6 +1440,33 @@ public class AdminDashboardServer {
         try (OutputStream output = exchange.getResponseBody()) {
             output.write(bytes);
         }
+    }
+
+    private void handleChat(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendJson(exchange, 405, "{\"ok\":false,\"message\":\"Method not allowed\"}");
+            return;
+        }
+        Map<String, String> body = parseJson(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+        String message = body.getOrDefault("message", "").trim();
+        String sessionId = body.getOrDefault("sessionId", "dashboard:" + System.nanoTime());
+
+        if (message.isEmpty()) {
+            sendJson(exchange, 400, "{\"ok\":false,\"message\":\"message is required\"}");
+            return;
+        }
+
+        var context = new net.server.ai.AiToolContext(sessionId, null, "Dashboard");
+        var result = net.server.ai.MapleAIService.getInstance().chat(sessionId, message, context);
+
+        StringBuilder toolsJson = new StringBuilder("[");
+        for (int i = 0; i < result.toolsUsed().size(); i++) {
+            if (i > 0) toolsJson.append(",");
+            toolsJson.append("\"").append(json(result.toolsUsed().get(i))).append("\"");
+        }
+        toolsJson.append("]");
+
+        sendJson(exchange, 200, "{\"ok\":true,\"response\":\"" + json(result.response()) + "\",\"toolsUsed\":" + toolsJson + "}");
     }
 
     private Map<String, String> parseJson(String body) {

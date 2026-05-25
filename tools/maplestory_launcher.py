@@ -51,6 +51,12 @@ LOGS_DIR = ROOT / "logs"
 SERVER_OUT = LOGS_DIR / "server.out.log"
 SERVER_ERR = LOGS_DIR / "server.err.log"
 
+OLLAMA_URL = "http://localhost:11434"
+OLLAMA_LOG_CANDIDATES: list[Path] = [
+    Path(os.environ.get("LOCALAPPDATA", "")) / "Ollama" / "server.log",
+    Path.home() / ".ollama" / "logs" / "server.log",
+]
+
 CREATE_NO_WINDOW = 0x08000000
 CREATE_NEW_PROCESS_GROUP = 0x00000200
 
@@ -122,12 +128,14 @@ class MapleStoryLauncher:
 
         self._active_tab = "launcher"
         self._tab_buffers: dict[str, list[str]] = {
-            "launcher": [], "status": [], "server": [],
+            "launcher": [], "status": [], "server": [], "ollama": [],
         }
         self._log_file_positions: dict[str, int] = {}
+        self._ollama_log_path = self._find_ollama_log()
         self._latest_resources: dict | None = None
         self._latest_ports: dict[str, bool] = {}
         self._latest_channels_up: int = 0
+        self._latest_ollama: dict | None = None
         self._last_status_key: tuple = ()
 
         self._build_ui()
@@ -166,6 +174,12 @@ class MapleStoryLauncher:
         self.dashboard_dot = Label(status_row, text="●", bg=BG, fg=DANGER, font=("Segoe UI", 12))
         self.dashboard_dot.pack(side=LEFT)
         Label(status_row, text=" Dashboard", bg=BG, fg=TEXT_MUTED, font=("Segoe UI", 10)).pack(side=LEFT)
+        Label(status_row, text="    ", bg=BG).pack(side=LEFT)
+
+        self.ollama_dot = Label(status_row, text="●", bg=BG, fg=DANGER, font=("Segoe UI", 12))
+        self.ollama_dot.pack(side=LEFT)
+        self.ollama_status_var = StringVar(value=" Ollama —")
+        Label(status_row, textvariable=self.ollama_status_var, bg=BG, fg=TEXT_MUTED, font=("Segoe UI", 10)).pack(side=LEFT)
 
         bars_row = Frame(header, bg=BG)
         bars_row.pack(anchor="w", fill="x", pady=(8, 0))
@@ -182,6 +196,8 @@ class MapleStoryLauncher:
         self.stop_button.pack(side=LEFT, padx=(0, 8))
         self.refresh_button = Button(buttons, text="Refresh status", command=self.refresh_status, width=16, **btn_style)
         self.refresh_button.pack(side=LEFT, padx=(0, 8))
+        self.unload_ollama_button = Button(buttons, text="Ollama unload", command=self.unload_ollama_models, width=14, **btn_style)
+        self.unload_ollama_button.pack(side=LEFT, padx=(0, 8))
         Button(buttons, text="Launch game", command=self.launch_game, width=14, **btn_style).pack(side=RIGHT)
         Button(buttons, text="Open dashboard", command=lambda: webbrowser.open(DASHBOARD_URL), width=16, **btn_style).pack(side=RIGHT, padx=(0, 8))
 
@@ -192,6 +208,7 @@ class MapleStoryLauncher:
             ("launcher", "Launcher"),
             ("status", "Status"),
             ("server", "Server"),
+            ("ollama", "Ollama"),
         ]:
             btn = Button(
                 tab_bar, text=label, command=lambda t=tab_id: self._switch_tab(t), width=12,
@@ -341,6 +358,8 @@ class MapleStoryLauncher:
                 for p in CHANNEL_PORTS:
                     channel_status[p] = channels_up > 0
 
+            ollama_info = _fetch_ollama_status()
+
             resources = collect_resources()
             self._latest_resources = resources
             self._latest_ports = {
@@ -348,9 +367,10 @@ class MapleStoryLauncher:
                 **{f"ch_{p}": v for p, v in channel_status.items()},
             }
             self._latest_channels_up = channels_up
+            self._latest_ollama = ollama_info
 
             self.root.after(0, lambda: self._apply_status(
-                mysql_ok, cosmic_ok, dashboard_ok, channels_up, resources,
+                mysql_ok, cosmic_ok, dashboard_ok, channels_up, resources, ollama_info,
             ))
         except Exception as e:
             self._thread_log(f"Status check error: {e}")
@@ -362,6 +382,7 @@ class MapleStoryLauncher:
         dashboard_ok: bool,
         channels_up: int,
         resources: dict,
+        ollama_info: dict | None = None,
     ) -> None:
         self.mysql_dot.configure(fg=SUCCESS if mysql_ok else DANGER)
         self.cosmic_dot.configure(fg=SUCCESS if cosmic_ok else DANGER)
@@ -372,6 +393,20 @@ class MapleStoryLauncher:
             self.cosmic_status_var.set(ch_text)
         else:
             self.cosmic_status_var.set(" Cosmic —")
+
+        ollama_reachable = bool(ollama_info and ollama_info.get("reachable"))
+        self.ollama_dot.configure(fg=SUCCESS if ollama_reachable else DANGER)
+        if ollama_info and ollama_reachable:
+            loaded = ollama_info.get("loaded") or []
+            if loaded:
+                names = ", ".join(m.get("name", "?") for m in loaded[:2])
+                if len(loaded) > 2:
+                    names += f" +{len(loaded) - 2}"
+                self.ollama_status_var.set(f" Ollama {names}")
+            else:
+                self.ollama_status_var.set(" Ollama (idle)")
+        else:
+            self.ollama_status_var.set(" Ollama —")
 
         ram = resources.get("ram") or {}
         if ram.get("total_bytes"):
@@ -404,6 +439,23 @@ class MapleStoryLauncher:
         lines.append(f"  Dashboard ({DASHBOARD_PORT}): {'online' if ports.get('dashboard') else 'offline'}\n")
         for p in CHANNEL_PORTS:
             lines.append(f"  Channel ({p}):   {'online' if ports.get(f'ch_{p}') else 'offline'}\n")
+
+        ollama = self._latest_ollama or {}
+        lines.append("\n[Ollama]\n")
+        lines.append(f"  URL: {OLLAMA_URL}\n")
+        if ollama.get("reachable"):
+            loaded = ollama.get("loaded") or []
+            if loaded:
+                lines.append("  Warm in (V)RAM:\n")
+                for m in loaded:
+                    size_gb = (m.get("size_vram", 0)) / 1024**3
+                    lines.append(f"    · {m.get('name')} ({size_gb:.1f} GB VRAM)\n")
+                    if m.get("expires_at"):
+                        lines.append(f"      verloopt: {m['expires_at']}\n")
+            else:
+                lines.append("  geen modellen warm\n")
+        else:
+            lines.append(f"  niet bereikbaar\n")
 
         ram = res.get("ram") or {}
         gpus = res.get("gpus") or []
@@ -449,9 +501,53 @@ class MapleStoryLauncher:
             else:
                 btn.configure(bg=SURFACE_RAISED, activebackground=BORDER)
 
+    def unload_ollama_models(self) -> None:
+        self.unload_ollama_button.configure(state="disabled")
+        self._log("Ollama-modellen unloaden...")
+        run_in_thread(self._unload_ollama_models_worker)
+
+    def _unload_ollama_models_worker(self) -> None:
+        try:
+            ps = http_get_json(f"{OLLAMA_URL}/api/ps")
+            if ps is None:
+                self._thread_log("Ollama niet bereikbaar.")
+                return
+            models = ps.get("models") or []
+            if not models:
+                self._thread_log("Geen warme modellen om te unloaden.")
+                return
+            for m in models:
+                name = m.get("name", "?")
+                body = json.dumps({"model": name, "keep_alive": 0}).encode()
+                req = urllib.request.Request(
+                    f"{OLLAMA_URL}/api/generate",
+                    data=body, method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=10):
+                        pass
+                    self._thread_log(f"Unloaded: {name}")
+                except (OSError, urllib.error.URLError) as e:
+                    self._thread_log(f"Fout bij unload {name}: {e}")
+            self._refresh_status_worker()
+        finally:
+            self.root.after(0, lambda: self.unload_ollama_button.configure(state="normal"))
+
+    @staticmethod
+    def _find_ollama_log() -> Path | None:
+        for candidate in OLLAMA_LOG_CANDIDATES:
+            if candidate and candidate.exists():
+                return candidate
+        return None
+
     def _init_log_positions(self) -> None:
         for path in [SERVER_OUT, SERVER_ERR]:
             self._log_file_positions[str(path)] = path.stat().st_size if path.exists() else 0
+        if self._ollama_log_path is not None:
+            self._log_file_positions[str(self._ollama_log_path)] = (
+                self._ollama_log_path.stat().st_size if self._ollama_log_path.exists() else 0
+            )
 
     def _reset_log_tracking(self, tab_id: str, paths: list[Path]) -> None:
         self._tab_buffers[tab_id].clear()
@@ -462,6 +558,8 @@ class MapleStoryLauncher:
 
     def _tail_logs_loop(self) -> None:
         self._tail_log_files("server", [SERVER_OUT, SERVER_ERR])
+        if self._ollama_log_path is not None:
+            self._tail_log_files("ollama", [self._ollama_log_path])
         self.root.after(1000, self._tail_logs_loop)
 
     def _tail_log_files(self, tab_id: str, paths: list[Path]) -> None:
@@ -483,6 +581,8 @@ class MapleStoryLauncher:
                     for line in content.splitlines(keepends=True):
                         if not line.endswith("\n"):
                             line += "\n"
+                        if tab_id == "ollama" and "/api/ps" in line and "[GIN]" in line:
+                            continue
                         new_lines.append(line)
             except OSError:
                 pass
@@ -673,6 +773,23 @@ def run_hidden(command: list[str]) -> subprocess.CompletedProcess[str]:
 def run_in_thread(target) -> None:
     import threading
     threading.Thread(target=target, daemon=True).start()
+
+
+def _fetch_ollama_status() -> dict:
+    try:
+        ps = http_get_json(f"{OLLAMA_URL}/api/ps", timeout=1.5)
+        if ps is None:
+            return {"reachable": False}
+        loaded: list[dict] = []
+        for m in ps.get("models") or []:
+            loaded.append({
+                "name": m.get("name", "?"),
+                "size_vram": m.get("size_vram", 0),
+                "expires_at": m.get("expires_at", ""),
+            })
+        return {"reachable": True, "loaded": loaded}
+    except Exception:
+        return {"reachable": False}
 
 
 def main() -> int:

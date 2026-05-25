@@ -10717,6 +10717,16 @@ public class Character extends AbstractCharacterObject {
         this.commandtext = text;
     }
 
+    private volatile String aiPendingResponse;
+
+    public String getAiPendingResponse() {
+        return aiPendingResponse;
+    }
+
+    public void setAiPendingResponse(String response) {
+        this.aiPendingResponse = response;
+    }
+
     public int getRewardPoints() {
         try (Connection con = DatabaseConnection.getConnection();
              PreparedStatement ps = con.prepareStatement("SELECT rewardpoints FROM accounts WHERE id=?;")) {

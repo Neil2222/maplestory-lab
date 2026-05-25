@@ -26,17 +26,24 @@ import client.Client;
 import client.autoban.AutobanFactory;
 import net.AbstractPacketHandler;
 import net.packet.InPacket;
+import net.server.ai.AiToolContext;
+import net.server.ai.ChatResult;
+import net.server.ai.MapleAIService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import server.ChatLogger;
 import tools.PacketCreator;
 import tools.PacketCreator.WhisperFlag;
 
+import java.util.concurrent.CompletableFuture;
+
 /**
  * @author Chronos
  */
 public final class WhisperHandler extends AbstractPacketHandler {
     private static final Logger log = LoggerFactory.getLogger(WhisperHandler.class);
+
+    public static final String AI_BOT_NAME = "MapleAI";
 
     // result types, not sure if there are proper names for these
     public static final byte RT_ITC = 0x00;
@@ -48,6 +55,13 @@ public final class WhisperHandler extends AbstractPacketHandler {
     public void handlePacket(InPacket p, Client c) {
         byte request = p.readByte();
         String name = p.readString();
+
+        if (name.equalsIgnoreCase(AI_BOT_NAME) && request == (WhisperFlag.WHISPER | WhisperFlag.REQUEST)) {
+            String message = p.readString();
+            handleAIWhisper(message, c.getPlayer());
+            return;
+        }
+
         Character target = c.getWorldServer().getPlayerStorage().getCharacterByName(name);
 
         if (target == null) {
@@ -85,6 +99,23 @@ public final class WhisperHandler extends AbstractPacketHandler {
             // not found for whisper is the same message
             user.sendPacket(PacketCreator.getWhisperResult(target.getName(), false));
         }
+    }
+
+    private void handleAIWhisper(String message, Character user) {
+        if (user.getAutobanManager().getLastSpam(7) + 200 > currentServerTime()) {
+            return;
+        }
+        user.getAutobanManager().spam(7);
+
+        ChatLogger.log(user.getClient(), "Whisper To " + AI_BOT_NAME, message);
+        user.sendPacket(PacketCreator.getWhisperResult(AI_BOT_NAME, true));
+
+        CompletableFuture.runAsync(() -> {
+            String sessionId = "chr:" + user.getId();
+            AiToolContext context = new AiToolContext(sessionId, user, user.getName());
+            ChatResult result = MapleAIService.getInstance().chat(sessionId, message, context);
+            user.sendPacket(PacketCreator.getWhisperReceive(AI_BOT_NAME, user.getClient().getChannel() - 1, false, result.response()));
+        });
     }
 
     private void handleWhisper(String message, Character user, Character target) {
