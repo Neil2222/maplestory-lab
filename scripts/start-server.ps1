@@ -46,28 +46,50 @@ if (-not (Test-Path -LiteralPath $mysql)) {
     throw "mysql.exe not found: $mysql"
 }
 
-if (-not (Test-Path -LiteralPath $MySqlDataDir)) {
-    New-Item -ItemType Directory -Force -Path $MySqlDataDir | Out-Null
-    & $mysqld "--initialize-insecure" "--datadir=$MySqlDataDir" "--console"
+$mysqlBaseDir = Split-Path (Split-Path $mysqld -Parent) -Parent
+$mysqlDataReady = (Test-Path -LiteralPath $MySqlDataDir) -and
+    (Test-Path -LiteralPath (Join-Path $MySqlDataDir "mysql"))
+
+if (-not $mysqlDataReady) {
+    if (-not (Test-Path -LiteralPath $MySqlDataDir)) {
+        New-Item -ItemType Directory -Force -Path $MySqlDataDir | Out-Null
+    }
+    Write-Host "Initializing MySQL data directory..."
+    & $mysqld "--initialize-insecure" "--basedir=$mysqlBaseDir" "--datadir=$MySqlDataDir" "--console"
     if ($LASTEXITCODE -ne 0) {
         throw "MySQL initialization failed with exit code $LASTEXITCODE."
     }
 }
 
-$mysqlListener = Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 3306 -State Listen -ErrorAction SilentlyContinue
+$mysqlListener = Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 3307 -State Listen -ErrorAction SilentlyContinue
 if ($null -eq $mysqlListener) {
-    Write-Host "Starting local MySQL on 127.0.0.1:3306"
-    Start-Process -FilePath $mysqld -ArgumentList @(
-        "--datadir=$MySqlDataDir",
-        "--bind-address=127.0.0.1",
-        "--port=3306",
-        "--mysqlx=0",
-        "--console"
-    ) -WorkingDirectory (Split-Path $MySqlDataDir -Parent) -WindowStyle Hidden
-    Start-Sleep -Seconds 5
+    Write-Host "Starting local MySQL on 127.0.0.1:3307"
+    $mysqlLogDir = Split-Path $MySqlDataDir -Parent
+    $mysqlErrLog = Join-Path $mysqlLogDir "mysql-error.log"
+    $mysqlArgs = "--basedir=`"$mysqlBaseDir`" --datadir=`"$MySqlDataDir`" --bind-address=127.0.0.1 --port=3307 --mysqlx=0 --log-error=`"$mysqlErrLog`""
+    $mysqlProc = Start-Process -FilePath $mysqld -ArgumentList $mysqlArgs -WorkingDirectory $mysqlLogDir -NoNewWindow -PassThru
+
+    $ready = $false
+    for ($i = 0; $i -lt 30; $i++) {
+        Start-Sleep -Seconds 1
+        if ($mysqlProc.HasExited) {
+            Write-Host "MySQL process exited with code $($mysqlProc.ExitCode)"
+            if (Test-Path $mysqlErrLog) {
+                Write-Host "--- MySQL error log ---"
+                Get-Content $mysqlErrLog -Tail 20 | ForEach-Object { Write-Host $_ }
+            }
+            throw "MySQL failed to start."
+        }
+        $listening = Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 3307 -State Listen -ErrorAction SilentlyContinue
+        if ($null -ne $listening) { $ready = $true; break }
+    }
+    if (-not $ready) {
+        throw "MySQL did not start within 30 seconds."
+    }
+    Write-Host "MySQL is ready."
 }
 
-& $mysql -h 127.0.0.1 -P 3306 -u root -e "CREATE DATABASE IF NOT EXISTS cosmic CHARACTER SET utf8 COLLATE utf8_general_ci;"
+& $mysql -h 127.0.0.1 -P 3307 -u root -e "CREATE DATABASE IF NOT EXISTS cosmic CHARACTER SET utf8 COLLATE utf8_general_ci;"
 if ($LASTEXITCODE -ne 0) {
     throw "Could not create or verify database 'cosmic'."
 }
@@ -92,9 +114,16 @@ try {
             Select-Object -First 1
     }
 
+    if ($null -eq $jar) {
+        $jar = Get-ChildItem -LiteralPath $CosmicDir -Filter "*.jar" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+    }
+
     if ($null -ne $jar) {
         Write-Host "Starting Cosmic from jar: $($jar.FullName)"
-        & $java "-Dwz-path=$CosmicDir\wz" -jar $jar.FullName
+        $wzPath = Join-Path $CosmicDir "wz"
+        & $java "-Dwz-path=$wzPath" -jar "$($jar.FullName)"
     } elseif (Test-Path -LiteralPath (Join-Path $CosmicDir "launch.bat")) {
         Write-Host "No built jar found. Falling back to launch.bat."
         & .\launch.bat
