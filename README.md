@@ -1,259 +1,140 @@
-# MapleStory Nostalgie Lab
+# MapleStory Lab
 
-Lokale singleplayer labomgeving voor GMS v83, bedoeld voor server-side experimenten met rates, GM commands, database edits, NPC/mob/drop/EXP-aanpassingen en logging. Deze map opent geen firewallpoorten, publiceert niets naar LAN/WAN en bevat geen MapleStory client, WZ-bestanden, localhost EXE's, injectors of anti-cheat bypasses.
+**Je eigen MapleStory v83-server op je pc, om mee te spelen en te experimenteren.** Gebouwd op de open-source
+emulator [Cosmic](https://github.com/P0nk/Cosmic), met daarbovenop een launcher, een admin-dashboard in je browser,
+een trainer met klassieke "hacks" die volledig server-side werken, en **MapleAI**: een AI-assistent in de game die
+via een lokaal taalmodel (Ollama) je vragen beantwoordt en zelf dingen voor je kan doen.
 
-## Keuze
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/game-mobvac.png" alt="In de game: alle slijmen van de map staan opgestapeld rond de Warrior, door Mob Vac uit de trainer"></td>
+    <td width="50%"><img src="docs/images/trainer.png" alt="De trainer met Mob Vac en God Mode aan voor de gekoppelde Warrior"></td>
+  </tr>
+  <tr>
+    <td><b>In de game:</b> Mob Vac trekt alle monsters van de map naar je toe...</td>
+    <td>...met één schakelaar (of sneltoets) in de <b>trainer</b>, naast God Mode, Auto Kill, Auto Loot en meer.</td>
+  </tr>
+</table>
 
-Gekozen emulator: **Cosmic v83**.
+## Wat zit erin
 
-Motivatie:
+- **Launcher.** Eén venster om MySQL, de server en het dashboard te starten en te stoppen, met de status van alles,
+  het geheugengebruik (RAM en VRAM, voor het AI-model) en een knop om de game te starten.
+- **Admin-dashboard** op [127.0.0.1:8787](http://127.0.0.1:8787). Kies een online character en pas zijn stats,
+  level en job aan, bekijk zijn equipment en inventory, geef items uit een catalogus van ruim 12.000, warp hem naar
+  een van 4.400 maps, of zet hem in één klik neer als een complete build (*Chief Bandit Lv 70*, *Hero Lv 100*, ...).
+  Verder: accounts, rates per world, servermeldingen, logs en een console voor alle GM-commands.
+- **Trainer** ([127.0.0.1:8787/trainer](http://127.0.0.1:8787/trainer)): Mob Vac, Auto Kill, Auto Loot, Heal Tick,
+  God Mode, No Knockback en Speed Boost voor het gekoppelde character, met sneltoetsen 1–7. Alles gebeurt op de
+  server; er komt geen Cheat Engine, injector of clientpatch aan te pas.
+- **MapleAI.** Typ `@ai` en je vraag in de chat, of fluister naar *MapleAI*. Het model (standaard `gpt-oss:20b` via
+  [Ollama](https://ollama.com)) kan tools gebruiken: de beste trainingsmap voor je level zoeken, items en maps
+  opzoeken, equipment aanraden, je warpen of een item geven.
+- **GM-commands** voor in de game, zoals `!godmode`, `!mobvac`, `!tubi`, `!killall` en `!exprate 20`; zie
+  [Lokale cheat-lab commands](#lokale-cheat-lab-commands).
+- **Installers** (Inno Setup): een complete installatie met draagbare Java en MySQL, de server, de launcher en de
+  client die je zelf aanlevert, en een losse client-installer voor medespelers.
 
-- Actieve open-source GitHub repo: https://github.com/P0nk/Cosmic
-- GMS v83, gebaseerd op HeavenMS/OdinMS-erfenis.
-- Windows-vriendelijk: Maven Wrapper (`mvnw.cmd`), `launch.bat`, `config.yaml`.
-- Moderne vereisten: Java 21 en MySQL Community Server 8+.
-- De standaardconfig gebruikt `HOST`, `LANHOST` en `LOCALHOST` op `127.0.0.1`.
-- De server maakt bij de eerste start zelf tabellen aan in database `cosmic`.
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/game-mapleai.png" alt="MapleAI in de game: Kerning City Subway Line1 is perfect voor jouw niveau!"></td>
+    <td width="50%"><img src="docs/images/dashboard-equipment.png" alt="Het dashboard: de Warrior met zijn stats links en zijn equipment in de slots"></td>
+  </tr>
+  <tr>
+    <td><b>MapleAI:</b> "welke map is goed om te trainen voor mij?" Het model zocht het zelf op met een tool.</td>
+    <td><b>Dashboard:</b> je character, zijn stats en zijn equipment.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/dashboard-items.png" alt="Het dashboard: de itembrowser met hoeden en helmen, filters op categorie en level"></td>
+    <td><img src="docs/images/dashboard-presets.png" alt="Het dashboard: character-presets zoals Bandit Lv 30, Chief Bandit Lv 70 en Hero Lv 100"></td>
+  </tr>
+  <tr>
+    <td><b>Items:</b> zoeken, filteren en met een klik geven.</td>
+    <td><b>Presets:</b> in één keer een complete build voor je character.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/launcher.png" alt="De MapleStory Launcher: MySQL, Cosmic met 3 kanalen, dashboard en Ollama groen, RAM en VRAM"></td>
+    <td><img src="docs/images/dashboard-world.png" alt="Het dashboard: rates voor alle worlds, servermelding, scrollende banner en actieve worlds"></td>
+  </tr>
+  <tr>
+    <td><b>Launcher:</b> alles starten en in de gaten houden.</td>
+    <td><b>World:</b> rates, meldingen en worlds, live.</td>
+  </tr>
+</table>
 
-Alternatieven:
+## Snel starten
 
-- **HeavenMS v83**: https://github.com/ronancpl/HeavenMS. Klassiek en bekend, maar ouder. Vereist Java 8, handmatige SQL-imports en verwijst naar oude client/localhost-downloads die antiviruswaarschuwingen geven.
-- **ArgonMS v62**: https://github.com/Kevin-Jin/argonms-server. Interessant voor v62, maar minder direct reproduceerbaar op Windows 11 en met minder actuele setup-documentatie.
+Na de [installatie](docs/installatie.md) (Java 21, MySQL 8, de server bouwen):
 
-## Veiligheidsregels
+| Bestand | Wat het doet |
+|---|---|
+| `Start MapleStory.bat` | De launcher: start en stopt alles en start de game |
+| `START.cmd` | De server starten zonder launcher |
+| `BUILD-START.cmd` | Na een codewijziging: bouwen en starten (stop de server eerst) |
+| `STOP.cmd` | De server stoppen |
 
-- Bind alleen aan `127.0.0.1`.
-- Zet Windows Firewall niet open voor MapleStory-poorten.
-- Gebruik geen publieke serverconfiguratie, port-forwarding, Hamachi, Radmin VPN of vergelijkbaar.
-- Download geen client-binaries, localhost EXE's, injectors of tools van obscure forums.
-- Alles wat onder Nexon/Wizet copyright kan vallen, moet je zelf legaal aanleveren: MapleStory client, WZ-bestanden, artwork, sounds en eventuele aangepaste clientbestanden.
-- Deze labmap bevat alleen open-source serverstappen en lokale scripts.
+Log in de game in met een nieuwe naam en wachtwoord: het account wordt automatisch aangemaakt. Voor de GM-commands heeft je
+character GM-rechten nodig; zie [Account en GM/Admin](docs/installatie.md#account-en-gmadmin).
+Voor MapleAI moet Ollama draaien met het model erin (`ollama pull gpt-oss:20b`).
 
-## Lokale logininstelling
+## Wat je nodig hebt
 
-Deze lokale labserver gebruikt alleen username/password. PIN en PIC zijn uitgezet in `Cosmic\config.yaml`:
+- Windows 11, Java 21 (bijvoorbeeld Amazon Corretto) en MySQL 8.4; Maven zit in de repo (`mvnw.cmd`).
+- **De game zelf lever je zelf aan.** Deze repo bevat geen MapleStory-client, geen WZ-bestanden en geen andere
+  bestanden van Nexon/Wizet: een compatibele GMS v83-client en de bijpassende WZ-data moet je zelf legaal hebben.
+- Voor MapleAI: [Ollama](https://ollama.com) met een model dat tools ondersteunt (standaard `gpt-oss:20b`, ~13 GB).
 
-```yaml
-ENABLE_PIC: false
-ENABLE_PIN: false
-BYPASS_PIC_EXPIRATION: 0
-BYPASS_PIN_EXPIRATION: 0
+## Lokaal of online
+
+Standaard draait alles alleen op deze pc: `Cosmic/config.yaml` gebruikt `127.0.0.1`, het dashboard en MySQL luisteren
+alleen op `127.0.0.1`, en er gaan geen firewallpoorten open. Wil je met anderen spelen, zet dan je eigen adressen in
+`Cosmic/config.local.properties` (staat niet in Git):
+
+```properties
+HOST=jouw.domein.of.publiek.ip
+LANHOST=192.168.x.y
 ```
 
-Nieuwe accounts worden nog steeds automatisch aangemaakt als je met een nieuwe username/password inlogt.
+Spelers van buitenaf hebben daarnaast doorgestuurde poorten nodig (login `8484`, kanalen `7575`–`7577`) en een
+client die naar jouw adres wijst; de client-installer (`installer/MapleStoryLabClient.iss`) installeert die. Denk
+daarbij aan wat je openzet: het dashboard en MySQL horen nooit buiten `127.0.0.1`.
 
 ## Lokale cheat-lab commands
 
-Deze commands zijn server-side toegevoegd voor lokaal singleplayer-experimenteren. Ze werken alleen voor GM level 4+ en vereisen geen Cheat Engine, injector of clientpatch.
-
-Gebruik in-game als GM:
+Server-side commands voor GM level 4+, zonder Cheat Engine, injector of clientpatch:
 
 ```text
-!godmode
-!mobvac
-!tubi
-!lootvac
-!forcevac
-!killall
-!droprate 20
-!exprate 20
-!mesorate 20
+!godmode   !mobvac   !tubi   !lootvac   !forcevac   !killall
+!droprate 20   !exprate 20   !mesorate 20
 ```
 
-Wat ze doen:
+- `!godmode`: schade van mobs wordt 0, tot je het opnieuw togglet of opnieuw inlogt.
+- `!mobvac` / `!vac`: alle mobs van de map naar jouw positie.
+- `!tubi` / `!forcevac`: alle drops op de map oppakken, ook die normaal niet van jou zijn.
+- `!lootvac` / `!vacloot` / `!itemvac`: drops oppakken via de normale pickup-route.
+- `!killall`: alle mobs op de map doden.
+- `!droprate`, `!exprate`, `!mesorate`: wereldrates aanpassen terwijl de server draait.
 
-- `!godmode`: togglet lokale server-side godmode voor je character. Schade van mobs gaat naar 0 tot je het opnieuw togglet of opnieuw inlogt.
-- `!mobvac` / `!vac`: verplaatst alle mobs op de map naar jouw huidige grondpositie.
-- `!tubi` / `!forcevac`: pakt alle drops op de map geforceerd op, inclusief drops die normaal niet van jou zijn.
-- `!lootvac` / `!vacloot` / `!itemvac`: pakt drops via de normale pickup-route op.
-- `!killall`: doodt alle mobs op de map.
-- `!droprate`, `!exprate`, `!mesorate`: past wereldrates runtime aan.
+Bestaat een command niet, dan draait waarschijnlijk nog een oude serverjar: `STOP.cmd` en dan `BUILD-START.cmd`.
 
-Als een command niet bestaat, draait waarschijnlijk nog een oude serverjar. Stop de server en start hem opnieuw met `C:\dev\maplestory-lab\STOP.cmd` en daarna `C:\dev\maplestory-lab\START.cmd`.
+## Veiligheid en spelregels
 
-## Admin Dashboard
+- Download geen clients, localhost-exe's, injectors of tools van obscure forums. Geeft een clientbestand een
+  antiviruswaarschuwing of komt het van een mirror, behandel het dan als onbetrouwbaar tenzij je de herkomst en hash
+  zelf kunt verantwoorden.
+- Gebruik niets hiervan tegen de officiële servers van Nexon; dit lab is voor je eigen server.
+- Bouw "hacks" server-side na (zoals de trainer en de GM-commands) in plaats van de client te hacken.
 
-Cosmic start nu ook een lokaal browserdashboard:
+## Documentatie
 
-```text
-http://127.0.0.1:8787
-```
+| Document | Inhoud |
+|---|---|
+| [Installatie en achtergrond](docs/installatie.md) | Handmatige installatie, de keuze voor Cosmic, logininstellingen, GM-rechten, ideeën voor experimenten |
+| [Troubleshooting](troubleshooting.md) | Foutoplossing |
+| [Cosmic](Cosmic/README.md) | De upstream server: features, WZ-data, configuratie |
 
-Dit dashboard bindt alleen aan `127.0.0.1` en opent geen LAN/WAN-poorten. Gebruik het op je tweede scherm naast de MapleStory client.
+## Licentie
 
-Beschikbaar in deze eerste versie:
-
-- online players bekijken
-- godmode per online character aan/uit zetten
-- heal
-- mob vac
-- tubi/forcevac
-- mesos geven
-- NX prepaid geven
-- item geven op item-id
-- EXP/drop/meso rates aanpassen
-- server notice sturen
-
-## Benodigdheden
-
-Voor Cosmic v83:
-
-- Windows 11
-- Git
-- Java 21 JDK, bijvoorbeeld Amazon Corretto 21
-- MySQL Community Server 8+ of MariaDB met MySQL-compatibele JDBC
-- Maven niet apart nodig; Cosmic bevat Maven Wrapper
-- Database schema: `cosmic`
-- Serverrepo: `C:\dev\maplestory-lab\Cosmic`
-- Client: compatibele GMS v83 clientbestanden, zelf legaal aanleveren
-- WZ/XML data:
-  - Client gebruikt `.wz`.
-  - Server gebruikt XML-export in de `wz`-map.
-  - Cosmic heeft aangepaste WZ-data nodig volgens de upstream README.
-
-Poorten lokaal:
-
-- Login: `8484`
-- Channels: meestal `7575`, `7576`, `7577`, afhankelijk van aantal channels
-- Cash shop/world/interne services kunnen extra lokale poorten gebruiken afhankelijk van serverconfig
-
-## Installatiecommando's
-
-Open PowerShell:
-
-```powershell
-New-Item -ItemType Directory -Force C:\dev\maplestory-lab
-cd C:\dev\maplestory-lab
-git clone https://github.com/P0nk/Cosmic.git
-cd .\Cosmic
-```
-
-Installeer Java 21 en MySQL 8+ als die nog ontbreken:
-
-```powershell
-winget install --id Amazon.Corretto.21.JDK --exact --accept-source-agreements --accept-package-agreements
-winget install --id Oracle.MySQL --exact --accept-source-agreements --accept-package-agreements
-winget install --id HeidiSQL.HeidiSQL --exact --accept-source-agreements --accept-package-agreements
-```
-
-Open daarna een nieuwe PowerShell en controleer:
-
-```powershell
-java -version
-mysql --version
-```
-
-Maak daarna de database:
-
-```powershell
-mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS cosmic CHARACTER SET utf8 COLLATE utf8_general_ci;"
-Copy-Item ..\.env.example .\.env -ErrorAction SilentlyContinue
-notepad .\config.yaml
-```
-
-Zet in `config.yaml` minimaal:
-
-```yaml
-server:
-  DB_HOST: "localhost"
-  DB_USER: "root"
-  DB_PASS: "jouw_mysql_wachtwoord"
-  HOST: 127.0.0.1
-  LANHOST: 127.0.0.1
-  LOCALHOST: 127.0.0.1
-```
-
-Rates staan per world, bijvoorbeeld Scania:
-
-```yaml
-worlds:
-  0:
-    exp_rate: 10
-    meso_rate: 10
-    drop_rate: 10
-    boss_drop_rate: 10
-    quest_rate: 5
-```
-
-Build:
-
-```powershell
-.\mvnw.cmd clean package
-```
-
-Start:
-
-```powershell
-..\scripts\start-server.ps1
-```
-
-Stop:
-
-```powershell
-..\scripts\stop-server.ps1
-```
-
-## Client lokaal laten verbinden
-
-Deze repo levert geen clientbestanden. Gebruik alleen clientbestanden die je zelf legaal mag gebruiken.
-
-Voor Cosmic is de praktische verwachting:
-
-- compatibele GMS v83 client
-- bijpassende WZ-bestanden
-- client moet naar `127.0.0.1` verbinden
-- server moet al draaien
-
-Gebruik geen instructies of tools voor officiele GMS-servers, anti-cheat bypasses of injectors. Als een clientbestand antiviruswaarschuwingen geeft of uit een forum/mirror komt, behandel het als onbetrouwbaar tenzij je de herkomst en hash zelf kunt verantwoorden.
-
-## Account en GM/Admin
-
-Cosmic heeft volgens upstream standaard:
-
-- username: `admin`
-- password: `admin`
-- PIN: `0000`
-- PIC: `000000`
-
-Nieuwe accounts kunnen automatisch worden aangemaakt als `AUTOMATIC_REGISTER: true` in `config.yaml` staat.
-
-Een bestaande character GM maken kan via database, nadat het character bestaat:
-
-```sql
-USE cosmic;
-SELECT id, name, accountid, gm FROM characters ORDER BY id DESC;
-UPDATE characters SET gm = 6 WHERE name = 'JouwCharacterNaam';
-UPDATE accounts SET gm = 6 WHERE id = (SELECT accountid FROM characters WHERE name = 'JouwCharacterNaam' LIMIT 1);
-```
-
-Als jouw schema alleen `characters.gm` of alleen `accounts.gm` gebruikt, pas alleen de bestaande kolom aan. Herstart de server of log opnieuw in.
-
-## Lokale experimenten
-
-Veilige manieren om nostalgische "vac/godmode/chaos" effecten lokaal te simuleren:
-
-- GM commands: spawn mobs, teleport, give item, level, job, mesos, NX, hide.
-- Rates: `exp_rate`, `meso_rate`, `drop_rate`, `boss_drop_rate`, `quest_rate`.
-- Config-flags:
-  - `USE_PERFECT_GM_SCROLL: true`
-  - `USE_PERFECT_SCROLLING: true`
-  - `USE_ENHANCED_CHSCROLL: true`
-  - `CHSCROLL_STAT_RANGE`
-  - `PETS_NEVER_HUNGRY`
-  - `GM_PETS_NEVER_HUNGRY`
-  - `USE_MAXRANGE`
-- Database edits: drops, shops, character stats, inventory, mesos.
-- Server scripts: NPC JS scripts, quest scripts, map scripts.
-- Mob/drop/EXP: wijzig server-side XML/database en herstart.
-- Eigen testcommands: voeg een GM-only command toe in de server command handlers.
-- Logs: zet debug/log flags alleen lokaal aan en test rare acties zonder externe spelers.
-
-Vermijd client-side hacking. Bouw het gedrag server-side na.
-
-## Bestanden in deze labmap
-
-- `README.md`: hoofdprocedure en motivatie.
-- `.env.example`: lokale instellingen als referentie.
-- `scripts/start-server.ps1`: build/run helper voor Cosmic.
-- `scripts/stop-server.ps1`: stopt lokale Java serverprocessen die vanuit de labmap draaien.
-- `troubleshooting.md`: foutoplossing.
+De server is [Cosmic](https://github.com/P0nk/Cosmic), een afgeleide van HeavenMS en OdinMS, onder de
+[GNU AGPL-3.0](Cosmic/LICENSE); dat geldt ook voor de aanpassingen in `Cosmic/`. MapleStory en alle bijbehorende artwork, namen en data zijn van Nexon; die zitten niet in deze repo.
+De screenshots hierboven zijn gemaakt met een eigen, zelf aangeleverde client.
