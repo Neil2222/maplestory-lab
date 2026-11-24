@@ -26,6 +26,11 @@ foreach ($required in @("HOST: 127.0.0.1", "LANHOST: 127.0.0.1", "LOCALHOST: 127
 
 $cosmicListener = Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 8484 -State Listen -ErrorAction SilentlyContinue
 if ($null -ne $cosmicListener) {
+    if ($Build) {
+        # The running server locks the jar, so a rebuild can't overwrite it.
+        # Make the user stop first instead of silently skipping the build.
+        throw "Cosmic draait al op 127.0.0.1:8484. Stop de server eerst (STOP.cmd) voordat je opnieuw bouwt, anders is de jar locked."
+    }
     Write-Host "Cosmic lijkt al te draaien op 127.0.0.1:8484. Je kunt nu de v83 client starten."
     exit 0
 }

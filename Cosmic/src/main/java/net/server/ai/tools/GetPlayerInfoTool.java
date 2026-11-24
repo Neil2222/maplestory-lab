@@ -2,6 +2,7 @@ package net.server.ai.tools;
 
 import client.Character;
 import net.server.Server;
+import net.server.admin.MapHandbook;
 import net.server.ai.AiTool;
 import net.server.ai.AiToolContext;
 import net.server.ai.AiToolResult;
@@ -29,9 +30,12 @@ public class GetPlayerInfoTool implements AiTool {
             return new AiToolResult(false, "Player '" + name + "' is not online.");
         }
 
+        String mapName = MapHandbook.nameById(chr.getMapId());
+        String mapDesc = mapName != null ? mapName + " (ID: " + chr.getMapId() + ")" : String.valueOf(chr.getMapId());
+
         String info = String.format(
-                "Name: %s, Level: %d, Job: %s, Map: %d, HP: %d/%d, MP: %d/%d, STR: %d, DEX: %d, INT: %d, LUK: %d, Mesos: %d",
-                chr.getName(), chr.getLevel(), chr.getJob().name(), chr.getMapId(),
+                "Name: %s, Level: %d, Job: %s, Map: %s, HP: %d/%d, MP: %d/%d, STR: %d, DEX: %d, INT: %d, LUK: %d, Mesos: %d",
+                chr.getName(), chr.getLevel(), chr.getJob().name(), mapDesc,
                 chr.getHp(), chr.getMaxHp(), chr.getMp(), chr.getMaxMp(),
                 chr.getStr(), chr.getDex(), chr.getInt(), chr.getLuk(),
                 chr.getMeso()

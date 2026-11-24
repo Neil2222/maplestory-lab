@@ -58,3 +58,6 @@ desktop.ini
 .vscode/
 *.swp
 *~
+
+# Python bytecode
+__pycache__/

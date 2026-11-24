@@ -6,6 +6,7 @@ import client.inventory.Pet;
 import client.inventory.manipulator.InventoryManipulator;
 import constants.id.ItemId;
 import constants.id.MobId;
+import constants.skills.GM;
 import constants.skills.Hero;
 import net.server.Server;
 import net.server.world.World;
@@ -41,7 +42,13 @@ public final class TrainerEngine {
     private static final Logger log = LoggerFactory.getLogger(TrainerEngine.class);
     private static final long TICK_MS = 300L;
 
-    public enum Cheat { MOB_VAC, AUTO_LOOT, KILL_ALL, GODMODE, HEAL_TICK, NO_KNOCKBACK }
+    public enum Cheat { MOB_VAC, AUTO_LOOT, KILL_ALL, GODMODE, HEAL_TICK, NO_KNOCKBACK, SPEED }
+
+    // Speed/jump bonuses applied by the SPEED cheat. 40/23 reach the client's legit
+    // walk (140) / jump (123) caps, so the buff feels maxed without tripping the
+    // server's movement validation.
+    private static final int SPEED_BONUS = 40;
+    private static final int JUMP_BONUS = 23;
 
     private static final Map<String, Set<Cheat>> active = new ConcurrentHashMap<>();
     private static final Map<String, Integer> vacOffset = new ConcurrentHashMap<>();
@@ -67,6 +74,7 @@ public final class TrainerEngine {
             // Sticky toggles applied immediately so the trainer state is consistent.
             if (cheat == Cheat.GODMODE && chr != null) chr.setLocalGodMode(true);
             if (cheat == Cheat.NO_KNOCKBACK && chr != null) applyStanceBuff(chr);
+            if (cheat == Cheat.SPEED && chr != null) applySpeedBuff(chr);
         } else {
             Set<Cheat> set = active.get(name);
             if (set != null) {
@@ -75,6 +83,10 @@ public final class TrainerEngine {
             }
             if (cheat == Cheat.GODMODE && chr != null) chr.setLocalGodMode(false);
             if (cheat == Cheat.NO_KNOCKBACK && chr != null) chr.cancelBuffStats(BuffStat.STANCE);
+            if (cheat == Cheat.SPEED && chr != null) {
+                chr.cancelBuffStats(BuffStat.SPEED);
+                chr.cancelBuffStats(BuffStat.JUMP);
+            }
         }
     }
 
@@ -117,6 +129,7 @@ public final class TrainerEngine {
                 if (cheats.contains(Cheat.AUTO_LOOT))    doAutoLoot(chr);
                 if (cheats.contains(Cheat.HEAL_TICK))    doHealTick(chr);
                 if (cheats.contains(Cheat.NO_KNOCKBACK)) applyStanceBuff(chr); // re-applies buff so it never expires
+                if (cheats.contains(Cheat.SPEED))        applySpeedBuff(chr); // re-applies buff so it never expires
             }
         } catch (Throwable t) {
             log.warn("Trainer tick threw", t);
@@ -169,6 +182,25 @@ public final class TrainerEngine {
             List<Pair<BuffStat, Integer>> stat = Collections.singletonList(new Pair<>(BuffStat.STANCE, 100));
             // 5s buff duration — comfortably longer than TICK_MS so it never lapses while active.
             player.sendPacket(PacketCreator.giveBuff(Hero.STANCE, 5000, stat));
+        } catch (Exception ignored) {}
+    }
+
+    /**
+     * Grants BuffStat.SPEED/JUMP via a giveBuff packet. Movement speed is client-side,
+     * so the client applies these bonuses to the player's walk/jump immediately. We
+     * attribute the buff to GM.HASTE so the client shows a recognisable Haste icon.
+     * Duration is a few seconds so it survives until the next tick refreshes it;
+     * cancelling the cheat removes it cleanly.
+     */
+    private static void applySpeedBuff(Character player) {
+        try {
+            player.setBuffedValue(BuffStat.SPEED, SPEED_BONUS);
+            player.setBuffedValue(BuffStat.JUMP, JUMP_BONUS);
+            List<Pair<BuffStat, Integer>> stat = Arrays.asList(
+                    new Pair<>(BuffStat.SPEED, SPEED_BONUS),
+                    new Pair<>(BuffStat.JUMP, JUMP_BONUS));
+            // 5s buff duration — comfortably longer than TICK_MS so it never lapses while active.
+            player.sendPacket(PacketCreator.giveBuff(GM.HASTE, 5000, stat));
         } catch (Exception ignored) {}
     }
 

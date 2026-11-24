@@ -17,6 +17,11 @@ import java.util.regex.Pattern;
 public class AiCommand extends Command {
     private static final Logger log = LoggerFactory.getLogger(AiCommand.class);
     private static final Pattern ITEM_ID_PATTERN = Pattern.compile("\\(?ID:?(\\d{7})\\)?");
+    // Valid v83 item icon/name tags: #i/#t/#z/#v + exactly 7 digits + '#'. Anything else (#i<mapid>,
+    // stray '#', truncation leftovers) references a non-existent item and crashes the client.
+    private static final Pattern VALID_ITEM_TAG = Pattern.compile("#[itzv]\\d{7}#");
+    // Cap response length: very long text overflows the v83 getText field and can crash the client.
+    private static final int MAX_RESPONSE_CHARS = 1500;
 
     {
         setDescription("Chat with MapleAI.");
@@ -34,17 +39,42 @@ public class AiCommand extends Command {
                 case '–', '—' -> sb.append('-');
                 case '…' -> sb.append("...");
                 default -> {
-                    if (c == '#' || c <= 0xFF) {
+                    if (c <= 0xFF) {
                         sb.append(c);
                     }
                 }
             }
         }
+        // Truncate before icon injection so a cut never splits an injected #i...# code.
+        if (sb.length() > MAX_RESPONSE_CHARS) {
+            sb.setLength(MAX_RESPONSE_CHARS);
+            sb.append("...");
+        }
         // Inject item icons: ID:1234567 or (ID:1234567) -> #i1234567# #t1234567#
         String result = ITEM_ID_PATTERN.matcher(sb).replaceAll("#i$1# #t$1#");
+        // Keep only valid item tags; strip every other '#' so no malformed control code crashes the client.
+        result = stripInvalidHashCodes(result);
         // Ensure proper line breaks for MapleStory client
         result = result.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\r\n");
         return result;
+    }
+
+    /**
+     * Keeps valid 7-digit item tags (#i/#t/#z/#v) verbatim and removes every other '#'. Stray or
+     * malformed control codes (e.g. #i followed by a 9-digit map id) crash the v83 client.
+     */
+    private static String stripInvalidHashCodes(String text) {
+        Matcher m = VALID_ITEM_TAG.matcher(text);
+        StringBuilder out = new StringBuilder(text.length());
+        int last = 0;
+        while (m.find()) {
+            // gap before the tag: drop every stray '#'; the matched tag itself is kept verbatim
+            out.append(text.substring(last, m.start()).replace("#", ""));
+            out.append(m.group());
+            last = m.end();
+        }
+        out.append(text.substring(last).replace("#", ""));
+        return out.toString();
     }
 
     @Override

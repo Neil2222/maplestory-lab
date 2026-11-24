@@ -192,6 +192,11 @@ class MapleStoryLauncher:
         buttons.pack(fill="x")
         self.start_button = Button(buttons, text="Start server", command=self.start_server, width=16, **btn_style)
         self.start_button.pack(side=LEFT, padx=(0, 8))
+        # Rebuilding the jar only makes sense in the dev tree (mvnw + sources present);
+        # the installed/frozen build ships a prebuilt jar with no toolchain to rebuild.
+        if not FROZEN:
+            self.build_button = Button(buttons, text="Build + start", command=self.build_and_start_server, width=14, **btn_style)
+            self.build_button.pack(side=LEFT, padx=(0, 8))
         self.stop_button = Button(buttons, text="Stop server", command=self.stop_server, width=16, **btn_style)
         self.stop_button.pack(side=LEFT, padx=(0, 8))
         self.refresh_button = Button(buttons, text="Refresh status", command=self.refresh_status, width=16, **btn_style)
@@ -242,6 +247,11 @@ class MapleStoryLauncher:
         self._set_busy(True)
         self._reset_log_tracking("server", [SERVER_OUT, SERVER_ERR])
         run_in_thread(self._start_server_worker)
+
+    def build_and_start_server(self) -> None:
+        self._set_busy(True)
+        self._reset_log_tracking("server", [SERVER_OUT, SERVER_ERR])
+        run_in_thread(self._build_and_start_server_worker)
 
     def launch_game(self) -> None:
         if not GAME_EXE.exists():
@@ -295,6 +305,54 @@ class MapleStoryLauncher:
                     break
             else:
                 self._thread_log("Server nog niet online na 60s — check de Server tab voor logs.")
+
+            self._refresh_status_worker()
+        finally:
+            self.root.after(0, lambda: self._set_busy(False))
+
+    def _build_and_start_server_worker(self) -> None:
+        try:
+            if not START_SCRIPT.exists():
+                self._thread_log(f"Start script niet gevonden: {START_SCRIPT}")
+                return
+
+            # The running JVM locks the jar, so a rebuild can't overwrite it.
+            # Stop gracefully first (saves all online characters), then wait for
+            # the JVM to release the jar before building.
+            if http_ok(f"{DASHBOARD_URL}/api/status"):
+                if not STOP_SCRIPT.exists():
+                    self._thread_log(f"Stop script niet gevonden: {STOP_SCRIPT}")
+                    return
+                self._thread_log("Server draait — eerst graceful stoppen (characters worden opgeslagen)...")
+                stop_result = run_hidden([POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(STOP_SCRIPT)])
+                for line in stop_result.stdout.splitlines():
+                    line = line.strip()
+                    if line:
+                        self._thread_log(f"  {line}")
+                stopped = False
+                for _ in range(40):
+                    time.sleep(0.5)
+                    if not http_ok(f"{DASHBOARD_URL}/api/status"):
+                        stopped = True
+                        break
+                if not stopped:
+                    self._thread_log("Server stopte niet binnen 20s — build afgebroken (jar is mogelijk nog locked).")
+                    return
+                self._thread_log("Server gestopt. Jar wordt herbouwd.")
+                # Brief grace so the OS fully releases the jar file handle before mvnw clean.
+                time.sleep(2)
+
+            self._thread_log("Build + start via start-server.ps1 -Build (mvnw clean package)...")
+            cmd = [POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(START_SCRIPT), "-Build"]
+            start_process(cmd, ROOT, SERVER_OUT, SERVER_ERR)
+
+            for _ in range(180):
+                time.sleep(1)
+                if http_ok(f"{DASHBOARD_URL}/api/status"):
+                    self._thread_log("Server is online!")
+                    break
+            else:
+                self._thread_log("Server nog niet online — build duurt langer, check de Server tab voor logs.")
 
             self._refresh_status_worker()
         finally:
@@ -631,6 +689,8 @@ class MapleStoryLauncher:
     def _set_busy(self, busy: bool) -> None:
         state = "disabled" if busy else "normal"
         self.start_button.configure(state=state)
+        if hasattr(self, "build_button"):
+            self.build_button.configure(state=state)
         self.stop_button.configure(state=state)
         self.refresh_button.configure(state=state)
 

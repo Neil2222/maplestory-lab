@@ -54,4 +54,12 @@ public final class MapHandbook {
         log.info("Loaded {} maps from handbook.", cached.size());
         return cached;
     }
+
+    /** Returns the handbook name for a map id, or null if it isn't listed. */
+    public static String nameById(int id) {
+        for (MapInfo m : load()) {
+            if (m.id() == id) return m.name();
+        }
+        return null;
+    }
 }
