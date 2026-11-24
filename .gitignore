@@ -24,6 +24,8 @@ Cosmic/admin-icons/
 # Local lab persistence written by the admin dashboard (per-world rates,
 # world count). Per-user state, not source.
 Cosmic/lab-overrides.properties
+# Per-machine network addresses (public host name, LAN IP) for online play.
+Cosmic/config.local.properties
 
 # --- Sub-projects we do NOT publish (copyrighted client material) ---
 client-cosmic/
